@@ -223,4 +223,23 @@ constexpr T PreviousPowerOf2(T value) noexcept {
     return value == 0 ? static_cast<T>(0) : std::bit_floor(value);
 }
 
+template <std::unsigned_integral T>
+constexpr T AlignDown(T value, T alignment) noexcept {
+    return alignment == 0 ? value : value - value % alignment;
+}
+
+template <std::unsigned_integral T>
+constexpr T AlignUp(T value, T alignment) noexcept {
+    if (alignment == 0) {
+        return value;
+    }
+    const T remainder = value % alignment;
+    return remainder == 0 ? value : value + (alignment - remainder);
+}
+
+template <typename T>
+constexpr T Select(bool condition, const T& whenTrue, const T& whenFlase) noexcept {
+    return condition ? whenTrue : whenFalse;
+}
+
 } // namespace Math
