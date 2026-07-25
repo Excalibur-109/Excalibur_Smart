@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../AliasDefinitions.hpp"
+
 #include <bit>
 #include <cmath>
 #include <concepts>

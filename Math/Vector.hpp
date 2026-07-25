@@ -548,7 +548,7 @@ inline Vector<detail::FloatingResult<T>, N> Normalize(const Vector<T, N>& value)
     return Vector<Result, N>(value) / length;
 }
 
-EXCALIBUR_FORCE_INLINE Vector<float, 3> Normalize(const Vector<float, 3>& value) noexcept {
+inline Vector<float, 3> Normalize(const Vector<float, 3>& value) noexcept {
     const float lengthSquared = value.x * value.x + value.y * value.y + value.z * value.z;
     if (lengthSquared <= std::numeric_limits<float>::epsilon() * std::numeric_limits<float>::epsilon()) {
         return Vector<float, 3>(0.0F);
@@ -563,7 +563,7 @@ inline Vector<T, N> NormalizeSafe(const Vector<T, N>& value, const Vector<T, N>&
     return lengthSquared <= epsilon * epsilon ? fallback : value / std::sqrt(lengthSquared);
 }
 
-EXCALIBUR_FORCE_INLINE Vector<float, 3> NormalizeSafe(const Vector<float, 3>& value, const Vector<float, 3>& fallback, float epsilon = std::numeric_limits<float>::epsilon() * static_cast<T>(8)) noexcept {
+inline Vector<float, 3> NormalizeSafe(const Vector<float, 3>& value, const Vector<float, 3>& fallback, float epsilon = std::numeric_limits<float>::epsilon() * static_cast<T>(8)) noexcept {
     const float lengthSquared = value.x * value.x + value.y * value.y + value.z * value.z;
     return lengthSquared <= epsilon * epsilon ? fallback : value / std::sqrt(lengthSquared);
 }
@@ -656,7 +656,7 @@ constexpr Vector<T, N> Reflect(const Vector<T, N>& incident, const Vector<T, N>&
     return incident - static_cast<T>(2) * Dot(incident, normal) * normal;
 }
 
-template <FloatScalar T, std::size_t N>
+template <FloatingScalar T, std::size_t N>
 inline Vector<T, N> Refract(const Vector<T, N>& incident, const Vector<T, N>& normal, T eta) noexcept {
     // Snell 定律的向量形式，eta=n1/n2。判别式小于 0 表示全反射，此时返回零向量。
     const T normalDotIncident = Dot(normal, incident);
