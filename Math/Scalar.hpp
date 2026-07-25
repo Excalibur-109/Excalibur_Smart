@@ -198,12 +198,12 @@ constexpr bool NearlyEqual(
 }
 
 template <FloatingScalar T>
-EXCALIBUR_FORCE_INLINE bool IsFinite(T value) noexcept {
+inline bool IsFinite(T value) noexcept {
     return std::isfinite(value);
 }
 
 template <FloatingScalar T>
-EXCALIBUR_FORCE_INLINE bool IsNaN(T value) noexcept {
+inline bool IsNaN(T value) noexcept {
     return std::isnan(value);
 }
 
