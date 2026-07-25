@@ -23,25 +23,25 @@ template <typename T>
 concept IntergerScalar = std::integral<T> && !std::same_as<std::remove_cv_t<T>, bool>;
 
 template <FloatingScalar T>
-EXCALIBUR_FORCE_INLINE constexpr T PI           = static_cast<T>(3.141592653589793238462643383279502884L);
+inline constexpr T PI           = static_cast<T>(3.141592653589793238462643383279502884L);
 
 template <FloatingScalar T>
-EXCALIBUR_FORCE_INLINE constexpr T TwoPI        = PI<T> * static_cast<T>(2);
+inline constexpr T TwoPI        = PI<T> * static_cast<T>(2);
 
 template <FloatingScalar T>
-EXCALIBUR_FORCE_INLINE constexpr T HalfPI       = PI<T> * static_cast<T>(0.5);
+inline constexpr T HalfPI       = PI<T> * static_cast<T>(0.5);
 
 template <FloatingScalar T>
-EXCALIBUR_FORCE_INLINE constexpr T QuarterPI    = PI<T> * static_cast<T>(0.25);
+inline constexpr T QuarterPI    = PI<T> * static_cast<T>(0.25);
 
 template <FloatingScalar T>
-EXCALIBUR_FORCE_INLINE constexpr T InvPI        = static_cast<T>(1) / PI<T>;
+inline constexpr T InvPI        = static_cast<T>(1) / PI<T>;
 
 template <FloatingScalar T>
-EXCALIBUR_FORCE_INLINE constexpr T SqrtTwo      = static_cast<T>(1.414213562373095048801688724209698079L);
+inline constexpr T SqrtTwo      = static_cast<T>(1.414213562373095048801688724209698079L);
 
 template <FloatingScalar T>
-EXCALIBUR_FORCE_INLINE constexpr T GoldenRadio  = static_cast<T>(1.618033988749894848204586834365638118L);
+inline constexpr T GoldenRadio  = static_cast<T>(1.618033988749894848204586834365638118L);
 
 template <typename T>
 constexpr T Min(const T& lhs, const T& rhs) noexcept {
@@ -128,23 +128,23 @@ constexpr T Radians(T degrees) noexcept {
 }
 
 template <FloatingScalar T>
-EXCALIBUR_FORCE_INLINE T Fract(T value) noexcept {
+inline T Fract(T value) noexcept {
     return value - std::floor(value);
 }
 
 template <FloatingScalar T>
-EXCALIBUR_FORCE_INLINE T Mod(T value, T divisor) noexcept {
+inline T Mod(T value, T divisor) noexcept {
     return std::fmod(value, divisor);
 }
 
 template <IntergerScalar T>
-EXCALIBUR_FORCE_INLINE T Mod(T value, T divisor) noexcept {
+inline T Mod(T value, T divisor) noexcept {
     return value % divisor;
 }
 
 /// 把任意实数循环映射到区间 [0, length), 适合 UV、角度和循环动画。
 template <FloatingScalar T>
-EXCALIBUR_FORCE_INLINE T Repeat(T value, T length) noexcept {
+inline T Repeat(T value, T length) noexcept {
     if (length <= static_cast<T>(0)) {
         return static_cast<T>(0);
     }
@@ -154,13 +154,13 @@ EXCALIBUR_FORCE_INLINE T Repeat(T value, T length) noexcept {
 }
 
 template <FloatingScalar T>
-EXCALIBUR_FORCE_INLINE T Wrap(T value, T minimum, T maximum) noexcept {
+inline T Wrap(T value, T minimum, T maximum) noexcept {
     const T range = maximum - minimum;
     return range <= static_cast<T>(0) ? minimum : minimum + Repeat(value - minimum, range);
 }
 
 template <FloatingScalar T>
-EXCALIBUR_FORCE_INLINE T PingPong(T value, T length) noexcept {
+inline T PingPong(T value, T length) noexcept {
     const T repeated = Repeat(value, length * static_cast<T>(2));
     return length - Abs(repeated - length);
 }
