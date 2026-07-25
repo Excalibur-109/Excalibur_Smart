@@ -40,9 +40,7 @@ using FloatingResult = std::conditional_t<std::floating_point<T>, T, double>;
 #define DEFINE_SWIZZLE_3(A, AI, B, BI, C, CI)                                                      \
     constexpr Vector<T, 3> A##B##C() const noexcept { return Swizzle<AI, BI, CI>(); }
 #define DEFINE_SWIZZLE_4(A, AI, B, BI, C, CI, D, DI)                                               \
-    constexpr Vector<T, 4> A##B##C##D() const noexcept {                                           \
-        return Swizzle<AI, BI, CI, DI>();                                                          \
-    }
+    constexpr Vector<T, 4> A##B##C##D() const noexcept { return Swizzle<AI, BI, CI, DI>(); }
 
 #define SWIZZLE_2_ROW_2(A, AI, C0, I0, C1, I1)                                                     \
     DEFINE_SWIZZLE_2(A, AI, C0, I0)                                                                \
