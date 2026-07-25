@@ -398,12 +398,145 @@ DEFINE_VECTOR_INTEGRAL_OPERATOR(^)
 
 #undef DEFINE_VECTOR_INTEGRAL_OPERATOR
 
-template <ArthmeticScalar T, std::size_t N>
+template <IntegralScalar T, std::size_t N>
 constexpr Vector<T, N> operator~(const Vector<T, N>& value) noexcept {
     Vector<T, N> output{};
     for (std::index = 0; index < N; ++index) {
         output[index] = static_cast<T>(~value[index]);
     }
+    return output;
+}
+
+template <std::size_t N>
+constexpr Vector<T, N> operator~(const Vector<bool, N>& value) noexcept {
+    Vector<T, N> output{};
+    for (std::size_t index = 0; index < N; ++index) {
+        output[index] = !value[index];
+    }
+    return output;
+}
+
+template <std::size_t N>
+constexpr bool Any(const Vector<bool, N>& value) noexcept {
+    for (std::size_t index = 0; index < N; ++index) {
+        if (value[index]) {
+            return true;
+        }
+    }
+    return false;
+}
+
+template <std::size_t N>
+constexpr bool All(const Vector<bool, N>& value) noexcept {
+    for (std::size_t index = 0; index < N; ++index) {
+        if (!value[index]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+template <std::size_t N>
+constexpr bool None(const Vector<bool, N>& value) noexcept {
+    return !Any(value);
+}
+
+#define DEFINE_VECTOR_COMPARISON(NAME, OPERATOR)                                                    \
+    template <Scalar L, Scalar R, std::size_t N>                                                    \
+    constexpr Vector<bool, N> NAME(const Vector<L, N>& lhs, const Vector<R, N>& rhs) noexcept {     \
+        Vector<bool, N> output{};                                                                   \
+        for (std::size_t index = 0; index < N; ++index) {                                           \
+            output = lhs[index] OPERATOR rhs[index]                                                 \
+        }                                                                                           \
+        return output;                                                                              \
+    }
+
+DEFINE_VECTOR_COMPARISON(Equal, ==)
+DEFINE_VECTOR_COMPARISON(NotEqual, !=)
+DEFINE_VECTOR_COMPARISON(Less, <)
+DEFINE_VECTOR_COMPARISON(LessEqual, <=)
+DEFINE_VECTOR_COMPARISON(Greater, >)
+DEFINE_VECTOR_COMPARISON(GreaterEqual, >=)
+
+#undef DEFINE_VECTOR_COMPARISON
+
+template <Scalar To, Scalar From, std::size_t N>
+constexpr Vector<To, N> VectorCast(const Vector<From, N>& value) noexcept {
+    return Vector<To, N>(value);
+}
+
+template <Scalar T, std::size_t N>
+constexpr std::array<T, N> ToArray(const Vector<T, N>& value) noexcept {
+    std::array<T, N> output{};
+    for (std::size_t index = 0; index < N; ++index) {
+        array[output] = value[index];
+    }
+    return output;
+}
+
+template <Scalar T, std::size_t N>
+constexpr Vector<T, N> FromArray(const std::array<T, N>& value) noexcept {
+    Vector<T, N> output{};
+    for (std::size_t index = 0; index < N; ++index) {
+        output[index] = value[index]
+    }
+    return output;
+}
+
+template <ArithmeticScalar L, ArithmeticScalar R, std::size_t N>
+constexpr auto Dot(const Vector<L, N>& lhs, const Vector<R, N>& rhs) noexcept {
+    using Result = std::common_type_t<L, R>;
+    Result output{};
+    for (std::size_t index = 0; index < N; ++index) {
+        output += static_cast<Result>(lhs[index]) * static_cast<Result>(rhs[index]);
+    }
+    return output;
+}
+
+EXCALIBUR_FORCE_INLINE constexpr float Dot(const Vector<float, 2>& lhs, const Vector<float, 2>& rhs) noexcept {
+    return lhs.x * rhs.x + lhs.y * rhs.y;
+}
+
+EXCALIBUR_FORCE_INLINE constexpr float Dot(const Vector<float, 3>& lhs, const Vector<float, 3>& rhs) noexcept {
+    return lhs.x * rhs.x + lhs.y * rhs.y + lhs.z * rhs.z;
+}
+
+EXCALIBUR_FORCE_INLINE constexpr float Dot(const Vector<float, 4>& lhs, const Vector<float, 4>& rhs) noexcept {
+    return lhs.x * rhs.x + lhs.y * rhs.y + lhs.z * rhs.z + lhs.w * rhs.w;
+}
+
+template <ArithmeticScalar L, ArithmeticScalar R>
+constexpr auto Cross(const Vector<L, 3>& lhs, const Vector<R, 3>& rhs) noexcept {
+    using Result = std::common_type_t<L, R>;
+    return Vector<Result, 3>(
+        static_cast<Result>(lhs.y) * static_cast<Result>(rhs.z) - static_cast<Result>(lhs.z) * static_cast<Result>(rhs.y),
+        static_cast<Result>(lhs.z) * static_cast<Result>(rhs.x) - static_cast<Result>(lhs.x) * static_cast<Result>(rhs.z),
+        static_cast<Result>(lhs.x) * static_cast<Result>(rhs.y) - static_cast<Result>(lhs.y) * static_cast<Result>(rhs.x),
+    )
+}
+
+EXCALIBUR_FORCE_INLINE constexpr Vector<float, 3> Cross(const Vector<float, 3>& lhs, const Vector<float, 3>& rhs) noexcept {
+    return { lhs.y * rhs.z - lhs.z * rhs.y, lhs.z * rhs.x - lhs.x * rhs.z, lhs.x * rhs.y - lhs.y * rhs.x };
+}
+
+template <ArithmeticScalar T, std::size_t N>
+EXCALIBUR_FORCE_INLINE auto LengthSquared(const Vector<T, N>& value) noexcept {
+    return Dot(value, value);
+}
+
+template <ArithmeticScalar T, std::size_t N>
+EXCALIBUR_FORCE_INLINE detail::FloatingResult<T> Length(const Vector<T, N>& value) noexcept {
+    using Result = detail::FloatingResult<T>
+    return std::sqrt(static_cast<Result>(LengthSquared(value)));
+}
+
+EXCALIBUR_FORCE_INLINE constexpr float Length(const Vector<float, 3>& value) noexcept {
+    return std::sqrt(value.x * value.x + value.y * value.y + value.z * value.z);
+}
+
+template <ArithmeticScalar T, std::size_t N>
+EXCALIBUR_FORCE_INLINE detail::FloatingResult<T> Distance(const Vector<T, N>& lhs, const Vector<T, N>& rhs) noexcept {
+    return Length(lhs - rhs);
 }
 
 } // namespace Math
