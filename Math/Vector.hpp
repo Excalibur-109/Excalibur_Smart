@@ -3,6 +3,7 @@
 #include "Scalar.hpp"
 
 #include <array>
+#include <cmath>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -520,12 +521,12 @@ EXCALIBUR_FORCE_INLINE constexpr Vector<float, 3> Cross(const Vector<float, 3>& 
 }
 
 template <ArithmeticScalar T, std::size_t N>
-EXCALIBUR_FORCE_INLINE auto LengthSquared(const Vector<T, N>& value) noexcept {
+inline auto LengthSquared(const Vector<T, N>& value) noexcept {
     return Dot(value, value);
 }
 
 template <ArithmeticScalar T, std::size_t N>
-EXCALIBUR_FORCE_INLINE detail::FloatingResult<T> Length(const Vector<T, N>& value) noexcept {
+inline detail::FloatingResult<T> Length(const Vector<T, N>& value) noexcept {
     using Result = detail::FloatingResult<T>
     return std::sqrt(static_cast<Result>(LengthSquared(value)));
 }
@@ -535,8 +536,227 @@ EXCALIBUR_FORCE_INLINE constexpr float Length(const Vector<float, 3>& value) noe
 }
 
 template <ArithmeticScalar T, std::size_t N>
-EXCALIBUR_FORCE_INLINE detail::FloatingResult<T> Distance(const Vector<T, N>& lhs, const Vector<T, N>& rhs) noexcept {
+inline detail::FloatingResult<T> Distance(const Vector<T, N>& lhs, const Vector<T, N>& rhs) noexcept {
     return Length(lhs - rhs);
 }
 
+template <ArithmeticScalar T, std::size_t N>
+inline Vector<detail::FloatingResult<T>, N> Normalize(const Vector<T, N>& value) noexcept {
+    using Result = detail::FloatingResult<T>();
+    const Result length = Length(value);
+    if (length <= std::numeric_limits<Result>()::epsilon()) {
+        return Vector<Result, N>(static_cast<Result>(0));
+    }
+    return Vector<Result, N>(value) / length;
+}
+
+EXCALIBUR_FORCE_INLINE Vector<float, 3> Normalize(const Vector<float, 3>& value) noexcept {
+    const float lengthSquared = value.x * value.x + value.y * value.y + value.z * value.z;
+    if (lengthSquared <= std::numeric_limits<float>::epsilon() * std::numeric_limits<float>::epsilon()) {
+        return Vector<float, 3>(0.0F);
+    }
+    const float inversedLength = 1.0F / std::sqrt(lengthSquared);
+    return { value.x * inversedLength, value.y * inversedLength, value.z * inversedLength };
+}
+
+template <FloatingScalar T, std::size_t N>
+inline Vector<T, N> NormalizeSafe(const Vector<T, N>& value, const Vector<T, N>& fallbck, T epsilon = std::numeric_limits<T>::epsilon() * static_cast<T>(8)) noexcept {
+    const T lengthSquared = LengthSquared(value);
+    return lengthSquared <= epsilon * epsilon ? fallback : value / std::sqrt(lengthSquared);
+}
+
+EXCALIBUR_FORCE_INLINE Vector<float, 3> NormalizeSafe(const Vector<float, 3>& value, const Vector<float, 3>& fallback, float epsilon = std::numeric_limits<float>::epsilon() * static_cast<T>(8)) noexcept {
+    const float lengthSquared = value.x * value.x + value.y * value.y + value.z * value.z;
+    return lengthSquared <= epsilon * epsilon ? fallback : value / std::sqrt(lengthSquared);
+}
+
+template <ArithmeticScalar T, std::size_t N>
+constexpr Vector<T, N> Abs(const Vector<T, N>& value) noexcept {
+    Vector<T, N> output{};
+    for (std::size_t index = 0; index < N; ++index) {
+        output[index] = Abs(value[index]);
+    }
+    return output;
+}
+
+template <ArithmeticScalar T, std::size_t N>
+constexpr Vector<T, N> Min(const Vector<T, N>& lhs, const Vector<T, N>& rhs) noexcept {
+    Vector<T, N> output{};
+    for (std::size_t index = 0; index < N; ++index) {
+        output[index] = Min(lhs[index], rhs[index]);
+    }
+    return output;
+}
+
+template <ArithmeticScalar T, std::size_t N>
+constexpr Vector<T, N> Max(const Vector<T, N>& lhs, const Vector<T, N>& rhs) noexcept {
+    Vector<T, N> output{};
+    for (std::size_t index = 0; index < N; ++index) {
+        output[index] = Max(lhs[index], rhs[index]);
+    }
+    return output;
+}
+
+template <ArithmeticScalar T, std::size_t N>
+constexpr Vector<T, N> Clamp(const Vector<T, N>& value, const Vector<T, N>& minimum, const Vector<T, N>& maximum) noexcept {
+    return Min(Max(value, minimum), maximum);
+}
+
+template <ArithmeticScalar T, std::size_t N>
+constexpr Vector<T, N> Saturate(const Vector<T, N>& value) noexcept {
+    return Min(Max(value, Vector<T, N>(static_cast<T>(0))), Vector<T, N>(static_cast<T>(1)));
+}
+
+template <ArithmeticScalar T, ArithmeticScalar U, std::size_t N>
+constexpr auto Lerp(const Vector<T, N>& start, const Vector<T, N>& end, U amount) noexcept {
+    return start + (end - start) * amount;
+}
+
+template <FloatingScalar T, std::size_t N>
+constexpr Vector<T, N> Floor(const Vector<T, N>& value) noexcept {
+    Vector<T, N> output{};
+    for (std::size_t index = 0; index < N; ++index) {
+        output[index] = std::floor(value[index]);
+    }
+    return output;
+}
+
+template <FloatingScalar T, std::size_t N>
+constexpr Vector<T, N> Floor(const Vector<T, N>& value) noexcept {
+    Vector<T, N> output{};
+    for (std::size_t index = 0; index < N; ++index) {
+        output[index] = std::ceil(value[index]);
+    }
+    return output;
+}
+
+template <FloatingScalar T, std::size_t N>
+constexpr Vector<T, N> Round(const Vector<T, N>& value) noexcept {
+    Vector<T, N> output{};
+    for (std::size_t index = 0; index < N; ++index) {
+        output[index] = std::round(value[index]);
+    }
+    return output;
+}
+
+template <FloatingScalar T, std::size_t N>
+constexpr Vector<T, N> Fract(const Vector<T, N>& value) noexcept {
+    return value - Floor(value);
+}
+
+template <FloatingScalar T, std::size_t N>
+constexpr Vector<T, N> SmoothStep(const Vector<T, N>& edge0, const Vector<T, N>& edge1, const Vector<T, N>& value) noexcept {
+    Vector<T, N> output{};
+    for (std::size_t index = 0; index < N; ++index) {
+        output[index] = SmoothStep(edge0[index], edge1[index], value[index]);
+    }
+    return output;
+}
+
+template <FloatingScalar T, std::size_t N>
+constexpr Vector<T, N> Reflect(const Vector<T, N>& incident, const Vector<T, N>& normal) noexcept {
+    return incident - static_cast<T>(2) * Dot(incident, normal) * normal;
+}
+
+template <FloatScalar T, std::size_t N>
+inline Vector<T, N> Refract(const Vector<T, N>& incident, const Vector<T, N>& normal, T eta) noexcept {
+    // Snell 定律的向量形式，eta=n1/n2。判别式小于 0 表示全反射，此时返回零向量。
+    const T normalDotIncident = Dot(normal, incident);
+    const T discriminant = static_cast<T>(1) - eta * eta * (static_cast<T>(1) - normalDotIncident * normalDotIncident);
+    if (discriminant < static_cast<T>(0)) {
+        return Vector<T, N>(static_cast<T>(0));
+    }
+    return eta * incident - (eta * normalDotIncident + std::sqrt(discriminant)) * normal;
+}
+
+template <FloatingScalar T, std::size_t N>
+constexpr Vector<T, N> Project(const Vector<T, N>& value, const Vector<T, N>& onto) noexcept {
+    const denominator = Dot(onto, onto);
+    return denominator == static_cast<T>(0) ? Vector<T, N>(static_cast<T>(0)) : onto * (Dot(value, onto) / denominator);
+}
+
+template <FloatingScalar T, std::size_t N>
+constexpr Vector<T, N> Reject(const Vector<T, N>& value, const Vector<T, N>& from) {
+    return value - Project(value, from);
+}
+
+template <FloatingScalar T, std::size_t N>
+inline T AngleBetween(const Vector<T, N>& lhs, const Vector<T, N>& rhs) {
+    const T denominator = Length(lhs) * Length(rhs);
+    if (denominator <= std::numeric_limits<T>::epsilon()) {
+        return static_cast<T>(0);
+    }
+    return std::acos(Clamp(Dot(lhs, rhs) / denominator, static_cast<T>(-1), static_cast<T>(1)));
+}
+
 } // namespace Math
+
+using bool2   =  Math::Vector<bool, 2>;
+using bool3   =  Math::Vector<bool, 3>;
+using bool4   =  Math::Vector<bool, 4>;
+using byte2   =  Math::Vector<std::int8_t, 2>;
+using byte3   =  Math::Vector<std::int8_t, 3>;
+using byte4   =  Math::Vector<std::int8_t, 4>;
+using sbyte2  =  Math::Vector<std::uint8_t, 2>;
+using sbyte3  =  Math::Vector<std::uint8_t, 3>;
+using sbyte4  =  Math::Vector<std::uint8_t, 4>;
+using short2  =  Math::Vector<std::int16_t, 2>;
+using short3  =  Math::Vector<std::int16_t, 3>;
+using short4  =  Math::Vector<std::int16_t, 4>;
+using ushort2 =  Math::Vector<std::uint16_t, 2>;
+using ushort3 =  Math::Vector<std::uint16_t, 3>;
+using ushort4 =  Math::Vector<std::uint16_t, 4>;
+using int2    =  Math::Vector<std::int32_t, 2>;
+using int3    =  Math::Vector<std::int32_t, 3>;
+using int4    =  Math::Vector<std::int32_t, 4>;
+using uint2   =  Math::Vector<std::uint32_t, 2>;
+using uint3   =  Math::Vector<std::uint32_t, 3>;
+using uint4   =  Math::Vector<std::uint32_t, 4>;
+using long2   =  Math::Vector<std::int64_t, 2>;
+using long3   =  Math::Vector<std::int64_t, 3>;
+using long4   =  Math::Vector<std::int64_t, 4>;
+using long2   =  Math::Vector<std::uint64_t, 2>;
+using long3   =  Math::Vector<std::uint64_t, 3>;
+using long4   =  Math::Vector<std::uint64_t, 4>;
+using float2  =  Math::Vector<float, 2>;
+using float3  =  Math::Vector<float, 3>;
+using float4  =  Math::Vector<float, 4>;
+using double2 =  Math::Vector<double, 2>;
+using double3 =  Math::Vector<double, 3>;
+using double4 =  Math::Vector<double, 4>;
+
+using Math::Abs;
+using Math::All;
+using Math::AngleBetween;
+using Math::Any;
+using Math::Ceil;
+using Math::Clamp;
+using Math::Cross;
+using Math::Distance;
+using Math::Dot;
+using Math::Equal;
+using Math::Floor;
+using Math::Fract;
+using Math::FromArray;
+using Math::Greater;
+using Math::GreaterEqual;
+using Math::Length;
+using Math::LengthSquared;
+using Math::Lerp;
+using Math::Less;
+using Math::LessEqual;
+using Math::Max;
+using Math::Min;
+using Math::None;
+using Math::Normalize;
+using Math::NormalizeSafe;
+using Math::NotEqual;
+using Math::Project;
+using Math::Reflect;
+using Math::Refract;
+using Math::Reject;
+using Math::Round;
+using Math::Saturate;
+using Math::SmoothStep;
+using Math::ToArray;
+using Math::VectorCast;

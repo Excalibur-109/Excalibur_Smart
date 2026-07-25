@@ -14,6 +14,7 @@ add_library(Math INTERFACE)
 target_sources(Math INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/Math.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Math/Scalar.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Math/Vector.hpp
 )
 target_include_directories(Math INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(Math INTERFACE cxx_std_20)
