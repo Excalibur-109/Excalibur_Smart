@@ -186,8 +186,8 @@ struct Vector<T, 2> {
         (((*this)[Indices] = value[source++]), ...);
     }
 
-    DEFINE_SWIZZLES_3_COMPONENTS(x, 0, y, 1)
-    DEFINE_SWIZZLES_3_COMPONENTS(r, 0, g, 1)
+    DEFINE_SWIZZLES_2_COMPONENTS(x, 0, y, 1)
+    DEFINE_SWIZZLES_2_COMPONENTS(r, 0, g, 1)
 };
 
 template <Scalar T>
@@ -233,8 +233,8 @@ struct Vector<T, 3> {
         (((*this)[Indices] = value[source++]), ...);
     }
 
-    DEFINE_SWIZZLES_2_COMPONENTS(x, 0, y, 1, z, 2)
-    DEFINE_SWIZZLES_2_COMPONENTS(r, 0, g, 1, b, 2)
+    DEFINE_SWIZZLES_3_COMPONENTS(x, 0, y, 1, z, 2)
+    DEFINE_SWIZZLES_3_COMPONENTS(r, 0, g, 1, b, 2)
 };
 
 template <Scalar T>
