@@ -310,4 +310,100 @@ struct Vector<T, 4> {
 #undef DEFINE_SWIZZLE_3
 #undef DEFINE_SWIZZLE_2
 
+template <Scalar T, std::size_t N>
+constexpr bool operator==(const Vector<T, N>& lhs, const Vector<T, N>& rhs) {
+    for (std::size_t index = 0; index < N; ++index) {
+        if (lhs[index] != rhs[index]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+template <Scalar T, std::size_t N>
+constexpr bool operator!=(const Vector<T, N>&lhs, const Vector<T, N>& rhs) {
+    return !(lhs == rhs);
+}
+
+#define DEFINE_VECTOR_BINARY_OPERATOR(OPERATOR)                                                        \
+    template <ArithmeticScalar L, ArithmeticScalar R, std::size_t N>                                   \
+    constexpr auto operator OPERATOR(const Vector<L, N>& lhs, const Vector<R, N>& rhs) noexcept {      \
+        using Result = std::common_type_t<L, R>;                                                       \
+        Vector<Result, N> output{};                                                                    \
+        for (std::size_t index = 0; index < N; ++index) {                                              \
+            output[index] = static_cast<Result>(lhs[index]) OPERATOR static_cast<Result>(rhs[index])   \
+        }                                                                                              \
+        return output;                                                                                 \
+    }                                                                                                  \
+    template <ArithmeticScalar L, ArithmeticScalar R, std::size_t N>                                   \
+    constexpr auto operator OPERATOR(const Vector<L, N>& lhs, R rhs) {                                 \
+        return lhs OPERATOR Vector<R, N>(rhs)                                                          \
+    }                                                                                                  \
+    template <ArithmeticScalar L, ArithmeticScalar R, std::size_t N>                                   \
+    constexpr auto operator OPERATOR(L lhs, const Vector<R, N>& rhs) {                                 \
+        return Vector<L, N>(lhs) OPERATOR rhs;                                                         \
+    }
+
+DEFINE_VECTOR_BINARY_OPERATOR(+)
+DEFINE_VECTOR_BINARY_OPERATOR(-)
+DEFINE_VECTOR_BINARY_OPERATOR(*)
+DEFINE_VECTOR_BINARY_OPERATOR(/)
+
+#undef DEFINE_VECTOR_BINARY_OPERATOR
+
+template <ArithmeticScalar T, std::size_t N>
+constexpr Vector<T, N> operator-(const Vector<T, N>& value) {
+    Vector<T, N> output{};
+    for (std::size_t index; index < N; ++index) {
+        output[index] = -value[index];
+    }
+    return output;
+}
+
+#define DEFINE_VECTOR_COMPOUND_OPERATOR(OPERATOR)                                                     \
+    template <ArithmeticScalar T, ArithmeticScalar U, std::size_t N>                                  \
+    constexpr Vector<T, N>& operator OPERATOR(Vector<T, N>& lhs, const Vector<T, N>& rhs) noexcept {  \
+        for (std::size_t index = 0; index < N; ++index) {                                             \
+            lhs[index] OPERATOR static_cast<T>(rhs[index])                                            \
+        }                                                                                             \
+        return lhs;                                                                                   \
+    }                                                                                                 \
+    template <ArithmeticScalar T, ArithmeticScalar U, std::size_t N>                                  \
+    constexpr Vector<T, N>& operator OPERATOR(Vector<T, N>& lhs, U rhs) {                             \
+        return lhs OPERATOR Vector<U, N>(rhs)                                                         \
+    }
+
+DEFINE_VECTOR_COMPOUND_OPERATOR(+=)
+DEFINE_VECTOR_COMPOUND_OPERATOR(-=)
+DEFINE_VECTOR_COMPOUND_OPERATOR(*=)
+DEFINE_VECTOR_COMPOUND_OPERATOR(/=)
+
+#undef DEFINE_VECTOR_COMPOUND_OPERATOR
+
+#define DEFINE_VECTOR_INTEGRAL_OPERATOR(OPERATOR)                                                     \
+    template <IntergerScalar L, IntergerScalar R, std::size_t N>                                      \  
+    constexpr auto operator OPERATOR(const Vector<L, N>& lhs, const Vector<R, N> rhs) noexcept {      \
+        using Result = std::common_type_t<L, R>;                                                      \
+        Vector<Result, N> output{};                                                                   \
+        for (std::size_t index = 0; index < N; ++index) {                                             \
+            output[index] = static_cast<Result>(lhs[index]) OPERATOR static_cast<Result>(rhs[index]); \
+        }                                                                                             \
+        return output;                                                                                \
+    }
+
+DEFINE_VECTOR_INTEGRAL_OPERATOR(%)
+DEFINE_VECTOR_INTEGRAL_OPERATOR(&)
+DEFINE_VECTOR_INTEGRAL_OPERATOR(|)
+DEFINE_VECTOR_INTEGRAL_OPERATOR(^)
+
+#undef DEFINE_VECTOR_INTEGRAL_OPERATOR
+
+template <ArthmeticScalar T, std::size_t N>
+constexpr Vector<T, N> operator~(const Vector<T, N>& value) noexcept {
+    Vector<T, N> output{};
+    for (std::index = 0; index < N; ++index) {
+        output[index] = static_cast<T>(~value[index]);
+    }
+}
+
 } // namespace Math
