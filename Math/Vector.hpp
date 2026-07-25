@@ -330,13 +330,13 @@ constexpr bool operator!=(const Vector<T, N>&lhs, const Vector<T, N>& rhs) {
         using Result = std::common_type_t<L, R>;                                                       \
         Vector<Result, N> output{};                                                                    \
         for (std::size_t index = 0; index < N; ++index) {                                              \
-            output[index] = static_cast<Result>(lhs[index]) OPERATOR static_cast<Result>(rhs[index])   \
+            output[index] = static_cast<Result>(lhs[index]) OPERATOR static_cast<Result>(rhs[index]);  \
         }                                                                                              \
         return output;                                                                                 \
     }                                                                                                  \
     template <ArithmeticScalar L, ArithmeticScalar R, std::size_t N>                                   \
     constexpr auto operator OPERATOR(const Vector<L, N>& lhs, R rhs) {                                 \
-        return lhs OPERATOR Vector<R, N>(rhs)                                                          \
+        return lhs OPERATOR Vector<R, N>(rhs);                                                         \
     }                                                                                                  \
     template <ArithmeticScalar L, ArithmeticScalar R, std::size_t N>                                   \
     constexpr auto operator OPERATOR(L lhs, const Vector<R, N>& rhs) {                                 \
@@ -353,7 +353,7 @@ DEFINE_VECTOR_BINARY_OPERATOR(/)
 template <ArithmeticScalar T, std::size_t N>
 constexpr Vector<T, N> operator-(const Vector<T, N>& value) {
     Vector<T, N> output{};
-    for (std::size_t index; index < N; ++index) {
+    for (std::size_t index = 0; index < N; ++index) {
         output[index] = -value[index];
     }
     return output;
@@ -361,15 +361,15 @@ constexpr Vector<T, N> operator-(const Vector<T, N>& value) {
 
 #define DEFINE_VECTOR_COMPOUND_OPERATOR(OPERATOR)                                                     \
     template <ArithmeticScalar T, ArithmeticScalar U, std::size_t N>                                  \
-    constexpr Vector<T, N>& operator OPERATOR(Vector<T, N>& lhs, const Vector<T, N>& rhs) noexcept {  \
+    constexpr Vector<T, N>& operator OPERATOR(Vector<T, N>& lhs, const Vector<U, N>& rhs) noexcept {  \
         for (std::size_t index = 0; index < N; ++index) {                                             \
-            lhs[index] OPERATOR static_cast<T>(rhs[index])                                            \
+            lhs[index] OPERATOR static_cast<T>(rhs[index]);                                           \
         }                                                                                             \
         return lhs;                                                                                   \
     }                                                                                                 \
     template <ArithmeticScalar T, ArithmeticScalar U, std::size_t N>                                  \
     constexpr Vector<T, N>& operator OPERATOR(Vector<T, N>& lhs, U rhs) {                             \
-        return lhs OPERATOR Vector<U, N>(rhs)                                                         \
+        return lhs OPERATOR Vector<U, N>(rhs);                                                        \
     }
 
 DEFINE_VECTOR_COMPOUND_OPERATOR(+=)
@@ -380,8 +380,8 @@ DEFINE_VECTOR_COMPOUND_OPERATOR(/=)
 #undef DEFINE_VECTOR_COMPOUND_OPERATOR
 
 #define DEFINE_VECTOR_INTEGRAL_OPERATOR(OPERATOR)                                                     \
-    template <IntergerScalar L, IntergerScalar R, std::size_t N>                                      \  
-    constexpr auto operator OPERATOR(const Vector<L, N>& lhs, const Vector<R, N> rhs) noexcept {      \
+    template <IntergerScalar L, IntergerScalar R, std::size_t N>                                      \
+    constexpr auto operator OPERATOR(const Vector<L, N>& lhs, const Vector<R, N>& rhs) noexcept {     \
         using Result = std::common_type_t<L, R>;                                                      \
         Vector<Result, N> output{};                                                                   \
         for (std::size_t index = 0; index < N; ++index) {                                             \
@@ -397,18 +397,18 @@ DEFINE_VECTOR_INTEGRAL_OPERATOR(^)
 
 #undef DEFINE_VECTOR_INTEGRAL_OPERATOR
 
-template <IntegralScalar T, std::size_t N>
+template <IntergerScalar T, std::size_t N>
 constexpr Vector<T, N> operator~(const Vector<T, N>& value) noexcept {
     Vector<T, N> output{};
-    for (std::index = 0; index < N; ++index) {
+    for (std::size_t index = 0; index < N; ++index) {
         output[index] = static_cast<T>(~value[index]);
     }
     return output;
 }
 
 template <std::size_t N>
-constexpr Vector<T, N> operator~(const Vector<bool, N>& value) noexcept {
-    Vector<T, N> output{};
+constexpr Vector<bool, N> operator~(const Vector<bool, N>& value) noexcept {
+    Vector<bool, N> output{};
     for (std::size_t index = 0; index < N; ++index) {
         output[index] = !value[index];
     }
@@ -445,7 +445,7 @@ constexpr bool None(const Vector<bool, N>& value) noexcept {
     constexpr Vector<bool, N> NAME(const Vector<L, N>& lhs, const Vector<R, N>& rhs) noexcept {     \
         Vector<bool, N> output{};                                                                   \
         for (std::size_t index = 0; index < N; ++index) {                                           \
-            output = lhs[index] OPERATOR rhs[index]                                                 \
+            output[index] = lhs[index] OPERATOR rhs[index];                                         \
         }                                                                                           \
         return output;                                                                              \
     }
@@ -468,7 +468,7 @@ template <Scalar T, std::size_t N>
 constexpr std::array<T, N> ToArray(const Vector<T, N>& value) noexcept {
     std::array<T, N> output{};
     for (std::size_t index = 0; index < N; ++index) {
-        array[output] = value[index];
+        output[index] = value[index];
     }
     return output;
 }
@@ -477,7 +477,7 @@ template <Scalar T, std::size_t N>
 constexpr Vector<T, N> FromArray(const std::array<T, N>& value) noexcept {
     Vector<T, N> output{};
     for (std::size_t index = 0; index < N; ++index) {
-        output[index] = value[index]
+        output[index] = value[index];
     }
     return output;
 }
@@ -510,8 +510,8 @@ constexpr auto Cross(const Vector<L, 3>& lhs, const Vector<R, 3>& rhs) noexcept 
     return Vector<Result, 3>(
         static_cast<Result>(lhs.y) * static_cast<Result>(rhs.z) - static_cast<Result>(lhs.z) * static_cast<Result>(rhs.y),
         static_cast<Result>(lhs.z) * static_cast<Result>(rhs.x) - static_cast<Result>(lhs.x) * static_cast<Result>(rhs.z),
-        static_cast<Result>(lhs.x) * static_cast<Result>(rhs.y) - static_cast<Result>(lhs.y) * static_cast<Result>(rhs.x),
-    )
+        static_cast<Result>(lhs.x) * static_cast<Result>(rhs.y) - static_cast<Result>(lhs.y) * static_cast<Result>(rhs.x)
+    );
 }
 
 EXCALIBUR_FORCE_INLINE constexpr Vector<float, 3> Cross(const Vector<float, 3>& lhs, const Vector<float, 3>& rhs) noexcept {
@@ -525,7 +525,7 @@ inline auto LengthSquared(const Vector<T, N>& value) noexcept {
 
 template <ArithmeticScalar T, std::size_t N>
 inline detail::FloatingResult<T> Length(const Vector<T, N>& value) noexcept {
-    using Result = detail::FloatingResult<T>
+    using Result = detail::FloatingResult<T>;
     return std::sqrt(static_cast<Result>(LengthSquared(value)));
 }
 
@@ -540,9 +540,9 @@ inline detail::FloatingResult<T> Distance(const Vector<T, N>& lhs, const Vector<
 
 template <ArithmeticScalar T, std::size_t N>
 inline Vector<detail::FloatingResult<T>, N> Normalize(const Vector<T, N>& value) noexcept {
-    using Result = detail::FloatingResult<T>();
+    using Result = detail::FloatingResult<T>;
     const Result length = Length(value);
-    if (length <= std::numeric_limits<Result>()::epsilon()) {
+    if (length <= std::numeric_limits<Result>::epsilon()) {
         return Vector<Result, N>(static_cast<Result>(0));
     }
     return Vector<Result, N>(value) / length;
@@ -558,12 +558,12 @@ inline Vector<float, 3> Normalize(const Vector<float, 3>& value) noexcept {
 }
 
 template <FloatingScalar T, std::size_t N>
-inline Vector<T, N> NormalizeSafe(const Vector<T, N>& value, const Vector<T, N>& fallbck, T epsilon = std::numeric_limits<T>::epsilon() * static_cast<T>(8)) noexcept {
+inline Vector<T, N> NormalizeSafe(const Vector<T, N>& value, const Vector<T, N>& fallback, T epsilon = std::numeric_limits<T>::epsilon() * static_cast<T>(8)) noexcept {
     const T lengthSquared = LengthSquared(value);
     return lengthSquared <= epsilon * epsilon ? fallback : value / std::sqrt(lengthSquared);
 }
 
-inline Vector<float, 3> NormalizeSafe(const Vector<float, 3>& value, const Vector<float, 3>& fallback, float epsilon = std::numeric_limits<float>::epsilon() * static_cast<T>(8)) noexcept {
+inline Vector<float, 3> NormalizeSafe(const Vector<float, 3>& value, const Vector<float, 3>& fallback, float epsilon = std::numeric_limits<float>::epsilon() * static_cast<float>(8)) noexcept {
     const float lengthSquared = value.x * value.x + value.y * value.y + value.z * value.z;
     return lengthSquared <= epsilon * epsilon ? fallback : value / std::sqrt(lengthSquared);
 }
@@ -620,7 +620,7 @@ constexpr Vector<T, N> Floor(const Vector<T, N>& value) noexcept {
 }
 
 template <FloatingScalar T, std::size_t N>
-constexpr Vector<T, N> Floor(const Vector<T, N>& value) noexcept {
+constexpr Vector<T, N> Ceil(const Vector<T, N>& value) noexcept {
     Vector<T, N> output{};
     for (std::size_t index = 0; index < N; ++index) {
         output[index] = std::ceil(value[index]);
@@ -669,7 +669,7 @@ inline Vector<T, N> Refract(const Vector<T, N>& incident, const Vector<T, N>& no
 
 template <FloatingScalar T, std::size_t N>
 constexpr Vector<T, N> Project(const Vector<T, N>& value, const Vector<T, N>& onto) noexcept {
-    const denominator = Dot(onto, onto);
+    const T denominator = Dot(onto, onto);
     return denominator == static_cast<T>(0) ? Vector<T, N>(static_cast<T>(0)) : onto * (Dot(value, onto) / denominator);
 }
 
@@ -713,9 +713,9 @@ using uint4   =  Math::Vector<std::uint32_t, 4>;
 using long2   =  Math::Vector<std::int64_t, 2>;
 using long3   =  Math::Vector<std::int64_t, 3>;
 using long4   =  Math::Vector<std::int64_t, 4>;
-using long2   =  Math::Vector<std::uint64_t, 2>;
-using long3   =  Math::Vector<std::uint64_t, 3>;
-using long4   =  Math::Vector<std::uint64_t, 4>;
+using ulong2  =  Math::Vector<std::uint64_t, 2>;
+using ulong3  =  Math::Vector<std::uint64_t, 3>;
+using ulong4  =  Math::Vector<std::uint64_t, 4>;
 using float2  =  Math::Vector<float, 2>;
 using float3  =  Math::Vector<float, 3>;
 using float4  =  Math::Vector<float, 4>;
