@@ -208,5 +208,35 @@ EXCALIBUR_FORCE_INLINE Matrix<float, 4, 4> MultiplyFloat4x4(const Matrix<float, 
 } // namespace detail
 #endif
 
+template <Scalar T, std::size_t R, std::size_t C>
+constexpr bool operator==(const Matrix<T, R, C>& lhs, const Matrix<T, R, C>& rhs) noexcept {
+    for (std::size_t row = 0; row < R; ++row) {
+        if (lhs[row] != rhs[row]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+template <Scalar T, std::size_t R, std::size_t C>
+constexpr bool operator!=(const Matrix<T, R, C>& lhs, const Matrix<T, R, C>& rhs) noexcept {
+    return !(lhs == rhs);
+}
+
+#define DEFINE_MATRIX_BINARY_OPERATOR(OPERATOR) \
+    template <ArithmeticScalar Lhs, ArithmeticScalar Rhs, std::size_t R, std::size_t C> \
+    constexpr auto operator OPERATOR (const Matrix<Lhs, R, C>& lhs, const Matrix<Rhs, R, C> rhs) noexcept { \
+        using Result = std::common_type_t<Lhs, Rhs>; \
+        Matrix<Result, R, C> output{}; \
+        for (std::size_t row = 0; row < R; ++row) { \
+            output[row] = lhs[row] + rhs[row]; \
+        } \
+        return output; \
+    }
+
+DEFINE_MATRIX_BINARY_OPERATOR(+)
+DEFINE_MATRIX_BINARY_OPERATOR(-)
+
+#undef DEFINE_MATRIX_BINARY_OPERATOR
 
 } // namespace Math
