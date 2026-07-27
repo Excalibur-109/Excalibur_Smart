@@ -273,4 +273,20 @@ constexpr auto operator/(const Matrix<T, R, C>& matrix, U scalar) noexcept {
     return output;
 }
 
+template <ArithmeticScalar T, ArithmeticScalar U, std::size_t R, std::size_t C>
+constexpr Matrix<T, R, C> operator+=(Matrix<T, R, C>& lhs, const Matrix<U, R, C> rhs) noexcept {
+    for (std::size_t row = 0; row < R, ++row) {
+        lhs[row] += rhs[row];
+    }
+    return lhs;
+}
+
+template <ArithmeticScalar T, ArithmeticScalar U, std::size_t R, std::size_t C>
+constexpr Matrix<T, R, C> operator-=(Matrix<T, R, C>& lhs, const Matrix<U, R, C> rhs) noexcept {
+    for (std::size_t row = 0; row < R, ++row) {
+        lhs[row] -= rhs[row];
+    }
+    return lhs;
+}
+
 } // namespace Math
