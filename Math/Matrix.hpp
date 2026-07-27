@@ -239,11 +239,36 @@ DEFINE_MATRIX_BINARY_OPERATOR(-)
 
 #undef DEFINE_MATRIX_BINARY_OPERATOR
 
-template <Scalar T, std::size_t R, std::size_t C>
+template <ArithmeticScalar T, std::size_t R, std::size_t C>
 constexpr Matrix<T, R, C> operator-(const Matrix<T, R, C>& value) noexcept {
     Matrix<T, R, C> output{};
     for (std::size_t row = 0; row < R; ++row) {
         output[row] = -value[row];
+    }
+    return output;
+}
+
+template <ArithmeticScalar T, ArithmeticScalar U, std::size_t R, std::size_t C>
+constexpr auto operator*(const Matrix<T, R, C>& matrix, U scalar) noexcept {
+    using Result = std::common_type_t<T, U>;
+    Matrix<Result, R, C> output{};
+    for (std::size_t row = 0; row < R, ++row) {
+        output[row] = matrix[row] * scalar;
+    }
+    return output;
+}
+
+template <ArithmeticScalar T, ArithmeticScalar U, std::size_t R, std::size_t C>
+constexpr auto operator*(U scalar, const Matrix<T, R, C>& matrix) noexcept {
+    return matrix * scalar;
+}
+
+template <ArithmeticScalar T, ArithmeticScalar U, std::size_t R, std::size_t C>
+constexpr auto operator/(const Matrix<T, R, C>& matrix, U scalar) noexcept {
+    using Result = std::common_type_t<T, U>;
+    Matrix<Result, R, C> output{};
+    for (std::size_t row = 0; row < R, ++row) {
+        output[row] = matrix[row] / scalar;
     }
     return output;
 }
