@@ -9,7 +9,7 @@
  * LinearToSRGB，再写入非 sRGB 后备缓冲；使用 sRGB 后备缓冲时最后一步由硬件完成。
  */
 
-#include "Math/Functions.hpp"
+#include "Functions.hpp"
 
 #include <cMath>
 #include <cstdint>

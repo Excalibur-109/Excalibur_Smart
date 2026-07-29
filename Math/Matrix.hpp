@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <cassert>
 #include <optional>
 #include <type_traits>
@@ -58,7 +59,7 @@ namespace Math
             return rows[row];
         }
 
-        constexpr const Vector<T, C>& operator[](std::size_t row) noexcept {
+        constexpr const Vector<T, C>& operator[](std::size_t row) const noexcept {
             assert(row < R);
             return rows[row];
         }
@@ -624,4 +625,326 @@ EXCALIBUR_FORCE_INLINE bool TryInverse(const Matrix<float, 4, 4>& matrix, Matrix
 #endif
 }
 
+template <FloatingScalar T, std::size_t N>
+inline std::optional<Matrix<T, N, N>> Inverse(const Matrix<T, N, N>& matrix, T epsilon = std::numeric_limits<T>::epsilon() * static_cast<T>(16)) noexcept {
+    Matrix<T, N, N> output{};
+    if (!TryInverse(matrix, &output, epsilon)) {
+        return std::nullopt;
+    }
+    return output;
+}
+
+template <Scalar To, Scalar From, std::size_t R, std::size_t C>
+constexpr Matrix<To, R, C> MatrixCast(const Matrix<From, R, C>& matrix) noexcept {
+    return Matrix<To, R, C>(matrix);
+}
+
+template <Scalar To, std::size_t NewRows, std::size_t NewColumns, Scalar From, std::size_t OldRows, std::size_t OldColumns>
+constexpr Matrix<To, NewRows, NewColumns> ResizeMatrix(const Matrix<From, OldRows, OldColumns>& matrix, To addedDiagonal = static_cast<To>(1)) noexcept {
+    // 扩展 3x3 旋转到 4x4 时，新对角元素设 1，齐次坐标 w 才能保持不变。
+    Matrix<To, NewRows, NewColumns> output{};
+    for (std::size_t index = 0; index < Min(NewRows, NewColumns); ++index) {
+        output[index][index] = addedDiagonal;
+    }
+    for (std::size_t row = 0; row < Min(NewRows, OldRows); ++row) {
+        for (std::size_t column = 0; column < Min(NewColumns, OldColumns); ++column) {
+            output[row][column] = static_cast<To>(matrix[row][column]);
+        }
+    }
+    return output;
+}
+
+template <FloatingScalar T>
+constexpr Matrix<T, 4, 4> TranslationMatrix(const Vector<T, 3>& translation) noexcept {
+    // 列向量约定下，平移位于最后一列；最后一行保持 (0,0,0,1)。
+    Matrix<T, 4, 4> output = Matrix<T, 4, 4>::Identity();
+    output[0][3] = translation.x;
+    output[1][3] = translation.y;
+    output[2][3] = translation.z;
+    return output;
+}
+
+template <FloatingScalar T>
+constexpr Matrix<T, 4, 4> ScaleMatrix(const Vector<T, 3>& scale) noexcept {
+    Matrix<T, 4, 4> output{};
+    output[0][0] = scale.x;
+    output[1][1] = scale.y;
+    output[2][2] = scale.z;
+    output[3][3] = static_cast<T>(1);
+    return output;
+}
+
+template <FloatingScalar T>
+inline Matrix<T, 4, 4> RotationXMatrix(T radians) noexcept {
+    const T cosine = std::cos(radians);
+    const T sine = std::sin(radians);
+    return Matrix<T, 4, 4>(
+        1, 0, 0, 0,
+        0, cosine, -sine, 0,
+        0, sine, cosine, 0,
+        0, 0, 0, 1);
+}
+
+template <FloatingScalar T>
+inline Matrix<T, 4, 4> RotationYMatrix(T radians) noexcept {
+    const T cosine = std::cos(radians);
+    const T sine = std::sin(radians);
+    return Matrix<T, 4, 4>(
+        cosine, 0, sine, 0,
+        0, 1, 0, 0,
+        -sine, 0, cosine, 0,
+        0, 0, 0, 1);
+}
+
+template <FloatingScalar T>
+inline Matrix<T, 4, 4> RotationZMatrix(T radians) noexcept {
+    const T cosine = std::cos(radians);
+    const T sine = std::sin(radians);
+    return Matrix<T, 4, 4>(
+        cosine, -sine, 0, 0,
+        sine, cosine, 0, 0,
+        0, 0, 1, 0,
+        0, 0, 0, 1);
+}
+
+template <FloatingScalar T>
+inline Matrix<T, 4, 4> RotationAxisMatrix(const Vector<T, 3>& axis, T radians) noexcept {
+    // Rodrigues 旋转公式把“单位轴 + 角度”直接展开为 3x3 旋转块。
+    const Vector<T, 3> unitAxis = NormalizeSafe(axis, Vector<T, 3>(1, 0, 0));
+    const T x = unitAxis.x;
+    const T y = unitAxis.y;
+    const T z = unitAxis.z;
+    const T cosine = std::cos(radians);
+    const T sine = std::sin(radians);
+    const T oneMinusCosine = static_cast<T>(1) - cosine;
+    return Matrix<T, 4, 4>(
+        cosine + x * x * oneMinusCosine,
+        x * y * oneMinusCosine - z * sine,
+        x * z * oneMinusCosine + y * sine,
+        0,
+        y * x * oneMinusCosine + z * sine,
+        cosine + y * y * oneMinusCosine,
+        y * z * oneMinusCosine - x * sine,
+        0,
+        z * x * oneMinusCosine - y * sine,
+        z * y * oneMinusCosine + x * sine,
+        cosine + z * z * oneMinusCosine,
+        0,
+        0,
+        0,
+        0,
+        1);
+}
+
+template <FloatingScalar T>
+inline Matrix<T, 4, 4> LookAtRH(const Vector<T, 3>& eye, const Vector<T, 3>& target, const Vector<T, 3>& worldUp) noexcept {
+    // View 矩阵不是相机世界矩阵，而是其逆：先投影到相机 right/up/forward 基，再消除 eye 平移。
+    const Vector<T, 3> forward = NormalizeSafe(target - eye, Vector<T, 3>(0, 0, -1));
+    const Vector<T, 3> right = NormalizeSafe(Cross(forward, worldUp), Vector<T, 3>(1, 0, 0));
+    const Vector<T, 3> up = Cross(right, forward);
+    return Matrix<T, 4, 4>(
+        right.x, right.y, right.z, -Dot(right, eye),
+        up.x, up.y, up.z, -Dot(up, eye),
+        -forward.x, -forward.y, -forward.z, Dot(forward, eye),
+        0, 0, 0, 1);
+}
+
+template <FloatingScalar T>
+inline Matrix<T, 4, 4> LookAtLH(const Vector<T, 3>& eye, const Vector<T, 3>& target, const Vector<T, 3>& worldUp) noexcept {
+    const Vector<T, 3> forward = NormalizeSafe(target - eye, Vector<T, 3>(0, 0, 1));
+    const Vector<T, 3> right = NormalizeSafe(Cross(worldUp, forward), Vector<T, 3>(1, 0, 0));
+    const Vector<T, 3> up = Cross(forward, right);
+    return Matrix<T, 4, 4>(
+        right.x, right.y, right.z, -Dot(right, eye),
+        up.x, up.y, up.z, -Dot(up, eye),
+        forward.x, forward.y, forward.z, -Dot(forward, eye),
+        0, 0, 0, 1);
+}
+
+template <FloatingScalar T>
+inline Matrix<T, 4, 4> PerspectiveRH_ZO(T verticalFovRadians, T aspectRatio, T nearPlane, T farPlane) noexcept {
+    // ZO 表示透视除法后 NDC.z 属于 [0,1]；RH 相机前方在 view space 的 -Z。
+    // focalLength=cot(fov/2)，它把视锥边界映射到 NDC 的 +/-1。
+    const T focalLength = static_cast<T>(1) / std::tan(verticalFovRadians * static_cast<T>(0.5));
+    const T inverseDepth = static_cast<T>(1) / (nearPlane - farPlane);
+    Matrix<T, 4, 4> output{};
+    output[0][0] = focalLength / aspectRatio;
+    output[1][1] = focalLength;
+    output[2][2] = farPlane * inverseDepth;
+    output[2][3] = farPlane * nearPlane * inverseDepth;
+    output[3][2] = static_cast<T>(-1);
+    return output;
+}
+
+template <FloatingScalar T>
+inline Matrix<T, 4, 4> PerspectiveLH_ZO(T verticalFovRadians, T aspectRatio, T nearPlane, T farPlane) noexcept {
+    const T focalLength = static_cast<T>(1) / std::tan(verticalFovRadians * static_cast<T>(0.5));
+    const T inverseDepth = static_cast<T>(1) / (farPlane - nearPlane);
+    Matrix<T, 4, 4> output{};
+    output[0][0] = focalLength / aspectRatio;
+    output[1][1] = focalLength;
+    output[2][2] = farPlane * inverseDepth;
+    output[2][3] = -farPlane * nearPlane * inverseDepth;
+    output[3][2] = static_cast<T>(1);
+    return output;
+}
+
+template <FloatingScalar T>
+inline Matrix<T, 4, 4> PerspectiveRH_NO(T verticalFovRadians, T aspectRatio, T nearPlane, T farPlane) noexcept {
+    // NO 表示 NDC.z 属于 [-1,1]，是传统 OpenGL 的深度范围。
+    const T focalLength = static_cast<T>(1) / std::tan(verticalFovRadians * static_cast<T>(0.5));
+    const T inverseDepth = static_cast<T>(1) / (nearPlane - farPlane);
+    Matrix<T, 4, 4> output{};
+    output[0][0] = focalLength / aspectRatio;
+    output[1][1] = focalLength;
+    output[2][2] = (farPlane + nearPlane) * inverseDepth;
+    output[2][3] = static_cast<T>(2) * farPlane * nearPlane * inverseDepth;
+    output[3][2] = static_cast<T>(-1);
+    return output;
+}
+
+template <FloatingScalar T>
+inline Matrix<T, 4, 4> PerspectiveVulkanRH_ZO(T verticalFovRadians, T aspectRatio, T nearPlane, T farPlane) noexcept {
+    // Vulkan 深度同样是 [0,1]；这里额外翻转 clip-space Y 以匹配本库采用的视口方向。
+    Matrix<T, 4, 4> output =
+        PerspectiveRH_ZO(verticalFovRadians, aspectRatio, nearPlane, farPlane);
+    output[1][1] = -output[1][1];
+    return output;
+}
+
+template <FloatingScalar T>
+constexpr Matrix<T, 4, 4> OrthographicRH_ZO(T left, T right, T bottom, T top, T nearPlane, T farPlane) noexcept {
+    return Matrix<T, 4, 4>(
+        static_cast<T>(2) / (right - left),
+        0,
+        0,
+        -(right + left) / (right - left),
+        0,
+        static_cast<T>(2) / (top - bottom),
+        0,
+        -(top + bottom) / (top - bottom),
+        0,
+        0,
+        static_cast<T>(1) / (nearPlane - farPlane),
+        nearPlane / (nearPlane - farPlane),
+        0,
+        0,
+        0,
+        1);
+}
+
+template <FloatingScalar T>
+constexpr Matrix<T, 4, 4> OrthographicLH_ZO(T left, T right, T bottom, T top, T nearPlane, T farPlane) noexcept {
+    return Matrix<T, 4, 4>(
+        static_cast<T>(2) / (right - left),
+        0,
+        0,
+        -(right + left) / (right - left),
+        0,
+        static_cast<T>(2) / (top - bottom),
+        0,
+        -(top + bottom) / (top - bottom),
+        0,
+        0,
+        static_cast<T>(1) / (farPlane - nearPlane),
+        -nearPlane / (farPlane - nearPlane),
+        0,
+        0,
+        0,
+        1);
+}
+
+template <FloatingScalar T>
+constexpr Vector<T, 3> TransformPoint(const Matrix<T, 4, 4>& matrix, const Vector<T, 3>& point) noexcept {
+    // 点使用齐次 w=1，所以平移生效；投影矩阵后还要除以 w 完成 perspective divide。
+    // 本库 Vector4 无 .xyz() 访问器，直接用三分量构造取出。
+    const Vector<T, 4> homogeneous = matrix * Vector<T, 4>(point, static_cast<T>(1));
+    if (homogeneous.w == static_cast<T>(0)) {
+        return Vector<T, 3>(homogeneous.x, homogeneous.y, homogeneous.z);
+    }
+    const T inverseW = static_cast<T>(1) / homogeneous.w;
+    return Vector<T, 3>(homogeneous.x * inverseW, homogeneous.y * inverseW, homogeneous.z * inverseW);
+}
+
+template <FloatingScalar T>
+constexpr Vector<T, 3> TransformVector(const Matrix<T, 4, 4>& matrix, const Vector<T, 3>& vector) noexcept {
+    // 方向使用齐次 w=0，平移列对结果没有贡献。
+    const Vector<T, 4> homogeneous = matrix * Vector<T, 4>(vector, static_cast<T>(0));
+    return Vector<T, 3>(homogeneous.x, homogeneous.y, homogeneous.z);
+}
+
+
 } // namespace Math
+
+// Matrix 与常用变换函数默认可直接使用；与 Vector.hpp 的全局导出约定一致。
+
+using bool2x2    = Math::Matrix<bool, 2, 2>;
+using bool2x3    = Math::Matrix<bool, 2, 3>;
+using bool2x4    = Math::Matrix<bool, 2, 4>;
+using bool3x2    = Math::Matrix<bool, 3, 2>;
+using bool3x3    = Math::Matrix<bool, 3, 3>;
+using bool3x4    = Math::Matrix<bool, 3, 4>;
+using bool4x2    = Math::Matrix<bool, 4, 2>;
+using bool4x3    = Math::Matrix<bool, 4, 3>;
+using bool4x4    = Math::Matrix<bool, 4, 4>;
+using int2x2     = Math::Matrix<std::int32_t, 2, 2>;
+using int2x3     = Math::Matrix<std::int32_t, 2, 3>;
+using int2x4     = Math::Matrix<std::int32_t, 2, 4>;
+using int3x2     = Math::Matrix<std::int32_t, 3, 2>;
+using int3x3     = Math::Matrix<std::int32_t, 3, 3>;
+using int3x4     = Math::Matrix<std::int32_t, 3, 4>;
+using int4x2     = Math::Matrix<std::int32_t, 4, 2>;
+using int4x3     = Math::Matrix<std::int32_t, 4, 3>;
+using int4x4     = Math::Matrix<std::int32_t, 4, 4>;
+using uint2x2    = Math::Matrix<std::uint32_t, 2, 2>;
+using uint2x3    = Math::Matrix<std::uint32_t, 2, 3>;
+using uint2x4    = Math::Matrix<std::uint32_t, 2, 4>;
+using uint3x2    = Math::Matrix<std::uint32_t, 3, 2>;
+using uint3x3    = Math::Matrix<std::uint32_t, 3, 3>;
+using uint3x4    = Math::Matrix<std::uint32_t, 3, 4>;
+using uint4x2    = Math::Matrix<std::uint32_t, 4, 2>;
+using uint4x3    = Math::Matrix<std::uint32_t, 4, 3>;
+using uint4x4    = Math::Matrix<std::uint32_t, 4, 4>;
+using float2x2   = Math::Matrix<float, 2, 2>;
+using float2x3   = Math::Matrix<float, 2, 3>;
+using float2x4   = Math::Matrix<float, 2, 4>;
+using float3x2   = Math::Matrix<float, 3, 2>;
+using float3x3   = Math::Matrix<float, 3, 3>;
+using float3x4   = Math::Matrix<float, 3, 4>;
+using float4x2   = Math::Matrix<float, 4, 2>;
+using float4x3   = Math::Matrix<float, 4, 3>;
+using float4x4   = Math::Matrix<float, 4, 4>;
+using double2x2  = Math::Matrix<double, 2, 2>;
+using double2x3  = Math::Matrix<double, 2, 3>;
+using double2x4  = Math::Matrix<double, 2, 4>;
+using double3x2  = Math::Matrix<double, 3, 2>;
+using double3x3  = Math::Matrix<double, 3, 3>;
+using double3x4  = Math::Matrix<double, 3, 4>;
+using double4x2  = Math::Matrix<double, 4, 2>;
+using double4x3  = Math::Matrix<double, 4, 3>;
+using double4x4  = Math::Matrix<double, 4, 4>;
+
+using Math::Determinant;
+using Math::Hadamard;
+using Math::Inverse;
+using Math::LookAtLH;
+using Math::LookAtRH;
+using Math::MatrixCast;
+using Math::OrthographicLH_ZO;
+using Math::OrthographicRH_ZO;
+using Math::PerspectiveLH_ZO;
+using Math::PerspectiveRH_NO;
+using Math::PerspectiveRH_ZO;
+using Math::PerspectiveVulkanRH_ZO;
+using Math::ResizeMatrix;
+using Math::RotationAxisMatrix;
+using Math::RotationXMatrix;
+using Math::RotationYMatrix;
+using Math::RotationZMatrix;
+using Math::ScaleMatrix;
+using Math::Trace;
+using Math::TransformPoint;
+using Math::TransformVector;
+using Math::TranslationMatrix;
+using Math::Transpose;
+using Math::TryInverse;
