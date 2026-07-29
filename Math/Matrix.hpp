@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Vector.hpp"
-#include "Define.hpp"
+#include "Definitions.hpp"
 
 #include <array>
 #include <cstddef>
