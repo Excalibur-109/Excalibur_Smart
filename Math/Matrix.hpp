@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Vector.hpp"
+#include "Define.hpp"
 
 #include <array>
 #include <cstddef>
@@ -8,13 +9,6 @@
 #include <optional>
 #include <type_traits>
 #include <utility>
-
-#if !defined(MATH_DISABLE_SIMD) && (defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2) || defined(__SSE2__))
-#include <immintrin.h>
-#define MATH_MATRIX_HAS_SSE2 1
-#else
-#define MATH_MATRIX_HAS_SSE2 0
-#endif
 
 namespace Math
 {
@@ -86,7 +80,7 @@ namespace Math
         }
     };
 
-#if MATH_MATRIX_HAS_SSE2
+#if MATH_HAS_SSE2
 namespace detail {
 
 EXCALIBUR_FORCE_INLINE __m128 LoadFloat4(const Vector<float, 4>& value) noexcept {
@@ -334,7 +328,7 @@ constexpr auto operator*(const Matrix<Lhs, R, Shared>& lhs, const Matrix<Rhs, Sh
 }
 
 EXCALIBUR_FORCE_INLINE constexpr Vector<float, 4> operator*(const Matrix<float, 4, 4>& matrix, const Vector<float, 4>& vector) noexcept {
-#if MATH_MATRIX_HAS_SSE2
+#if MATH_HAS_SSE2
     if (!std::is_constant_evaluated()) {
         return detail::MultiplyFloat4x4Vector(matrix, vector);
     }
@@ -348,7 +342,7 @@ EXCALIBUR_FORCE_INLINE constexpr Vector<float, 4> operator*(const Matrix<float, 
 }
 
 EXCALIBUR_FORCE_INLINE constexpr Matrix<float, 4, 4> operator*(const Matrix<float, 4, 4>& lhs, const Matrix<float, 4, 4>& rhs) noexcept {
-#if MATH_MATRIX_HAS_SSE2
+#if MATH_HAS_SSE2
     if (std::is_constant_evaluated()) {
         return detail::MultiplyFloat4x4(lhs, rhs);
     }
@@ -371,6 +365,262 @@ EXCALIBUR_FORCE_INLINE constexpr Matrix<float, 4, 4> operator*(const Matrix<floa
         lhs.rows[3].x * rhs.rows[0].z + lhs.rows[3].y * rhs.rows[1].z + lhs.rows[3].z * rhs.rows[2].z + lhs.rows[3].w * rhs.rows[3].z,
         lhs.rows[3].x * rhs.rows[0].w + lhs.rows[3].y * rhs.rows[1].w + lhs.rows[3].z * rhs.rows[2].w + lhs.rows[3].w * rhs.rows[3].w
     );
+}
+
+template <ArithmeticScalar T, std::size_t R, std::size_t C>
+constexpr Matrix<T, R, C> Transpose(const Matrix<T, R, C>& matrix) noexcept {
+    Matrix<T, R, C> output{};
+    for (std::size_t column = 0; column < C; ++column) {
+        for (std::size_t row = 0; row < R; ++row) {
+            output.rows[column][row] = matrix[row][column];
+        }
+    }
+    return output;
+}
+
+template <ArithmeticScalar Lhs, ArithmeticScalar Rhs, std::size_t R, std::size_t C>
+constexpr auto Hadamard(const Matrix<Lhs, R, C>& lhs, const Matrix<Rhs, R, C> rhs) noexcept {
+    using Result = std::common_type_t<Lhs, Rhs>;
+    Matrix<Result, R, C> output{};
+    for (std::size_t row = 0; row < R; ++row) {
+        output[row] = lhs[row] * rhs[row];
+    }
+    return output;
+}
+
+template <ArithmeticScalar T, std::size_t N>
+constexpr T Trace(const Matrix<T, N, N>& matrix) noexcept {
+    T output;
+    for (std::index = 0; index < N; ++index) {
+        output += matrix[index][index];
+    }
+    return output;
+}
+
+template <ArithmeticScalar T>
+constexpr T Determinant(const Matrix<T, 2, 2> matrix) noexcept {
+    return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0];
+}
+
+template <ArithmeticScalar T>
+constexpr T Determinant(const Matrix<T, 3, 3> matrix) noexcept {
+    return matrix[0][0] * (matrix[1][1] * matrix[2][2] - matrix[1][2] * matrix[2][1]) -
+           matrix[0][1] * (matrix[1][0] * matrix[2][2] - matrix[1][2] * matrix[2][0]) +
+           matrix[0][2] * (matrix[1][0] * matrix[2][1] - matrix[1][1] * matrix[2][0]);
+}
+
+template <ArithmeticScalar T>
+constexpr T Determinant(const Matrix<T, 4, 4> matrix) noexcept {
+    const auto laplaceExpand = [&](std::size_t skippedColumn) noexcept {
+        Matrix<T, 3, 3> minor{};
+        for (std::size_t row = 1; row < 4; ++row) {
+            std::size_t outputColumn = 0;
+            for (std::size_t column = 0; column < 4; ++column) {
+                if (column != skippedColumn) {
+                    minor[row - 1][outputColumn++] = matrix[row][column];
+                }
+            }
+        }
+    }
+    return matrix[0][1] * laplaceExpand(0) - matrix[0][1] * laplaceExpand(1) + matrix[0][2] * laplaceExpand(2) - matrix[0][3] * laplaceExpand(3);
+}
+
+/**
+ * @brief Gauss-Jordan 带主元消去求逆。
+ *
+ * 每列选择绝对值最大的主元，比直接套伴随矩阵更能抵抗浮点误差。奇异矩阵返回 false，
+ * 且不会修改 output，调用方不会无意得到 NaN/Inf 矩阵。
+ */
+template <FloatingScalar T, std::size_t N>
+inline bool TryInverse(const Matrix<T, N, N>& matrix, Matrix<T, N, N>* output, T epsilon = std::numeric_limits<T>::epsilon() * static_cast<T>(16)) noexcept {
+    if (output == nullptr) {
+        return false;
+    }
+    Matrix<T, N, N> left = matrix;
+    Matrix<T, N, N> right = Matrix<T, N, N>::Identity();
+
+    for (std::size_t pivotColumn = 0; pivotColumn < N; ++pivotColumn) {
+        std::size_t pivotRow = pivotColumn;
+        T pivotMagnitude = Abs(left[pivotRow][pivotColumn]);
+        for (std::size_t row = pivotColumn + 1; row < N; ++row) {
+            const T candidateMagnitude = Abs(left[row][pivotColumn]);
+            if (candidateMagnitude > pivotMagnitude) {
+                pivotRow = row;
+                pivotMagnitude = candidateMagnitude;
+            }
+        }
+        if (pivotMagnitude <= epsilon) {
+            return false;
+        }
+
+        if (pivotRow != pivotColumn) {
+            std::swap(left[pivotRow], left[pivotColumn]);
+            std::swap(right[pivotRow], right[pivotColumn]);
+        }
+
+        const T inversePivot = static_cast<T>(1) / left[pivotColumn][pivotColumn];
+        left[pivotColumn] *= inversePivot;
+        right[pivotColumn] *= inversePivot;
+
+        for (std::size_t row = 0; row < N; ++row) {
+            if (row == pivotColumn) {
+                continue;
+            }
+            const T factor = left[row][pivotColumn];
+            left[row] -= left[pivotColumn] * factor;
+            right[row] -= right[pivotColumn] * factor;
+        }
+    }
+
+    *output = right;
+    return true;
+}
+
+EXCALIBUR_FORCE_INLINE bool TryInverse(const Matrix<float, 4, 4>& matrix, Matrix<float, 4, 4>* output, float epsilon = std::numeric_limits<float>::epsilon() * 16.0F) noexcept {
+    if (output == nullptr) {
+        return false;
+    }
+
+#if MATH_HAS_SSE2
+    return detail::TryInverseFloat4x4(matrix, output, epsilon);
+#else
+
+    // 绝大多数物体世界矩阵都是 [linear translation; 0 0 0 1]。直接求左上 3x3 的逆，
+    // 再计算 -inverseLinear*translation，比完整 4x4 余子式少很多乘法。精确检查最后一行
+    // 可以确保投影矩阵等非仿射输入不会误入该路径。
+    if (matrix.rows[3].x == 0.0F &&
+        matrix.rows[3].y == 0.0F &&
+        matrix.rows[3].z == 0.0F &&
+        matrix.rows[3].w == 1.0F) {
+        const float a = matrix.rows[0].x;
+        const float b = matrix.rows[0].y;
+        const float c = matrix.rows[0].z;
+        const float d = matrix.rows[1].x;
+        const float e = matrix.rows[1].y;
+        const float f = matrix.rows[1].z;
+        const float g = matrix.rows[2].x;
+        const float h = matrix.rows[2].y;
+        const float i = matrix.rows[2].z;
+
+        const float inverse00 = e * i - f * h;
+        const float inverse01 = c * h - b * i;
+        const float inverse02 = b * f - c * e;
+        const float inverse10 = f * g - d * i;
+        const float inverse11 = a * i - c * g;
+        const float inverse12 = c * d - a * f;
+        const float inverse20 = d * h - e * g;
+        const float inverse21 = b * g - a * h;
+        const float inverse22 = a * e - b * d;
+        const float determinant =
+            a * inverse00 + b * inverse10 + c * inverse20;
+        if (Abs(determinant) <= epsilon) {
+            return false;
+        }
+
+        const float inverseDeterminant = 1.0F / determinant;
+        const float m00 = inverse00 * inverseDeterminant;
+        const float m01 = inverse01 * inverseDeterminant;
+        const float m02 = inverse02 * inverseDeterminant;
+        const float m10 = inverse10 * inverseDeterminant;
+        const float m11 = inverse11 * inverseDeterminant;
+        const float m12 = inverse12 * inverseDeterminant;
+        const float m20 = inverse20 * inverseDeterminant;
+        const float m21 = inverse21 * inverseDeterminant;
+        const float m22 = inverse22 * inverseDeterminant;
+        const float tx = matrix.rows[0].w;
+        const float ty = matrix.rows[1].w;
+        const float tz = matrix.rows[2].w;
+
+        *output = Matrix<float, 4, 4>(
+            m00, m01, m02, -(m00 * tx + m01 * ty + m02 * tz),
+            m10, m11, m12, -(m10 * tx + m11 * ty + m12 * tz),
+            m20, m21, m22, -(m20 * tx + m21 * ty + m22 * tz),
+            0.0F, 0.0F, 0.0F, 1.0F);
+        return true;
+    }
+
+    const std::array<float, 16> m{
+        matrix.rows[0].x, matrix.rows[0].y, matrix.rows[0].z, matrix.rows[0].w,
+        matrix.rows[1].x, matrix.rows[1].y, matrix.rows[1].z, matrix.rows[1].w,
+        matrix.rows[2].x, matrix.rows[2].y, matrix.rows[2].z, matrix.rows[2].w,
+        matrix.rows[3].x, matrix.rows[3].y, matrix.rows[3].z, matrix.rows[3].w};
+    std::array<float, 16> inverse{};
+
+    inverse[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] -
+                 m[9] * m[6] * m[15] + m[9] * m[7] * m[14] +
+                 m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
+    inverse[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] +
+                 m[8] * m[6] * m[15] - m[8] * m[7] * m[14] -
+                 m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
+    inverse[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] -
+                 m[8] * m[5] * m[15] + m[8] * m[7] * m[13] +
+                 m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
+    inverse[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] +
+                  m[8] * m[5] * m[14] - m[8] * m[6] * m[13] -
+                  m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
+    inverse[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] +
+                 m[9] * m[2] * m[15] - m[9] * m[3] * m[14] -
+                 m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
+    inverse[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] -
+                 m[8] * m[2] * m[15] + m[8] * m[3] * m[14] +
+                 m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
+    inverse[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] +
+                 m[8] * m[1] * m[15] - m[8] * m[3] * m[13] -
+                 m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
+    inverse[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] -
+                  m[8] * m[1] * m[14] + m[8] * m[2] * m[13] +
+                  m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
+    inverse[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] -
+                 m[5] * m[2] * m[15] + m[5] * m[3] * m[14] +
+                 m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
+    inverse[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] +
+                 m[4] * m[2] * m[15] - m[4] * m[3] * m[14] -
+                 m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
+    inverse[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] -
+                  m[4] * m[1] * m[15] + m[4] * m[3] * m[13] +
+                  m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
+    inverse[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] +
+                  m[4] * m[1] * m[14] - m[4] * m[2] * m[13] -
+                  m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
+    inverse[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] +
+                 m[5] * m[2] * m[11] - m[5] * m[3] * m[10] -
+                 m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
+    inverse[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] -
+                 m[4] * m[2] * m[11] + m[4] * m[3] * m[10] +
+                 m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
+    inverse[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] +
+                  m[4] * m[1] * m[11] - m[4] * m[3] * m[9] -
+                  m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
+    inverse[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] -
+                  m[4] * m[1] * m[10] + m[4] * m[2] * m[9] +
+                  m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
+
+    const float determinant =
+        m[0] * inverse[0] + m[1] * inverse[4] + m[2] * inverse[8] + m[3] * inverse[12];
+    if (Abs(determinant) <= epsilon) {
+        return false;
+    }
+
+    const float inverseDeterminant = 1.0F / determinant;
+    *output = Matrix<float, 4, 4>(
+        inverse[0] * inverseDeterminant,
+        inverse[1] * inverseDeterminant,
+        inverse[2] * inverseDeterminant,
+        inverse[3] * inverseDeterminant,
+        inverse[4] * inverseDeterminant,
+        inverse[5] * inverseDeterminant,
+        inverse[6] * inverseDeterminant,
+        inverse[7] * inverseDeterminant,
+        inverse[8] * inverseDeterminant,
+        inverse[9] * inverseDeterminant,
+        inverse[10] * inverseDeterminant,
+        inverse[11] * inverseDeterminant,
+        inverse[12] * inverseDeterminant,
+        inverse[13] * inverseDeterminant,
+        inverse[14] * inverseDeterminant,
+        inverse[15] * inverseDeterminant);
+    return true;
+#endif
 }
 
 } // namespace Math
