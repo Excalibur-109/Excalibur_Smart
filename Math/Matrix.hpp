@@ -315,4 +315,62 @@ constexpr auto operator*(const Matrix<Lhs, R, C>& lhs, const Vector<Rhs, C>& rhs
     return output;
 }
 
+template <ArithmeticScalar Lhs, ArithmeticScalar Rhs, std::size_t R, std::size_t Shared, std::size_t C>
+constexpr auto operator*(const Matrix<Lhs, R, Shared>& lhs, const Matrix<Rhs, Shared, C>& rhs) noexcept {
+    using Result = std::common_type_t<Lhs, Rhs>;
+    Matrix<Rhs, C, Shared> rhsColumns{};
+    for (std::size_t column = 0; column < C; ++column) {
+        for (std::size_t shared = 0; shared < Shared; ++shared) {
+            rhsColumns.rows[column][shared] = rhs.rows[shared][column];
+        }
+    }
+    Matrix<Result, R, C> output{};
+    for (std::size_t row = 0; row < R, ++row) {
+        for (std::size_t column = 0; column < C; ++column) {
+            output.rows[row][column] = Dot(lhs.rows[row], rhsColumns.rows[column]);
+        }
+    }
+    return output;
+}
+
+EXCALIBUR_FORCE_INLINE constexpr Vector<float, 4> operator*(const Matrix<float, 4, 4>& matrix, const Vector<float, 4>& vector) noexcept {
+#if MATH_MATRIX_HAS_SSE2
+    if (!std::is_constant_evaluated()) {
+        return detail::MultiplyFloat4x4Vector(matrix, vector);
+    }
+#endif
+    return {
+        matrix.rows[0].x * vector.x + matrix.rows[0].y * vector.y + matrix.rows[0].z * vector.z + matrix.rows[0].w * vector.w,
+        matrix.rows[1].x * vector.x + matrix.rows[1].y * vector.y + matrix.rows[1].z * vector.z + matrix.rows[1].w * vector.w,
+        matrix.rows[2].x * vector.x + matrix.rows[2].y * vector.y + matrix.rows[2].z * vector.z + matrix.rows[2].w * vector.w,
+        matrix.rows[3].x * vector.x + matrix.rows[3].y * vector.y + matrix.rows[3].z * vector.z + matrix.rows[3].w * vector.w,
+    };
+}
+
+EXCALIBUR_FORCE_INLINE constexpr Matrix<float, 4, 4> operator*(const Matrix<float, 4, 4>& lhs, const Matrix<float, 4, 4>& rhs) noexcept {
+#if MATH_MATRIX_HAS_SSE2
+    if (std::is_constant_evaluated()) {
+        return detail::MultiplyFloat4x4(lhs, rhs);
+    }
+#endif
+    return Matrix<float, 4, 4> (
+        lhs.rows[0].x * rhs.rows[0].x + lhs.rows[0].y * rhs.rows[1].x + lhs.rows[0].z * rhs.rows[2].x + lhs.rows[0].w * rhs.rows[3].x,
+        lhs.rows[0].x * rhs.rows[0].y + lhs.rows[0].y * rhs.rows[1].y + lhs.rows[0].z * rhs.rows[2].y + lhs.rows[0].w * rhs.rows[3].y,
+        lhs.rows[0].x * rhs.rows[0].z + lhs.rows[0].y * rhs.rows[1].z + lhs.rows[0].z * rhs.rows[2].z + lhs.rows[0].w * rhs.rows[3].z,
+        lhs.rows[0].x * rhs.rows[0].w + lhs.rows[0].y * rhs.rows[1].w + lhs.rows[0].z * rhs.rows[2].w + lhs.rows[0].w * rhs.rows[3].w,
+        lhs.rows[1].x * rhs.rows[0].x + lhs.rows[1].y * rhs.rows[1].x + lhs.rows[1].z * rhs.rows[2].x + lhs.rows[1].w * rhs.rows[3].x,
+        lhs.rows[1].x * rhs.rows[0].y + lhs.rows[1].y * rhs.rows[1].y + lhs.rows[1].z * rhs.rows[2].y + lhs.rows[1].w * rhs.rows[3].y,
+        lhs.rows[1].x * rhs.rows[0].z + lhs.rows[1].y * rhs.rows[1].z + lhs.rows[1].z * rhs.rows[2].z + lhs.rows[1].w * rhs.rows[3].z,
+        lhs.rows[1].x * rhs.rows[0].w + lhs.rows[1].y * rhs.rows[1].w + lhs.rows[1].z * rhs.rows[2].w + lhs.rows[1].w * rhs.rows[3].w,
+        lhs.rows[2].x * rhs.rows[0].x + lhs.rows[2].y * rhs.rows[2].x + lhs.rows[2].z * rhs.rows[2].x + lhs.rows[2].w * rhs.rows[3].x,
+        lhs.rows[2].x * rhs.rows[0].y + lhs.rows[2].y * rhs.rows[2].y + lhs.rows[2].z * rhs.rows[2].y + lhs.rows[2].w * rhs.rows[3].y,
+        lhs.rows[2].x * rhs.rows[0].z + lhs.rows[2].y * rhs.rows[2].z + lhs.rows[2].z * rhs.rows[2].z + lhs.rows[2].w * rhs.rows[3].z,
+        lhs.rows[2].x * rhs.rows[0].w + lhs.rows[2].y * rhs.rows[2].w + lhs.rows[2].z * rhs.rows[2].w + lhs.rows[2].w * rhs.rows[3].w,
+        lhs.rows[3].x * rhs.rows[0].x + lhs.rows[3].y * rhs.rows[1].x + lhs.rows[3].z * rhs.rows[2].x + lhs.rows[3].w * rhs.rows[3].x,
+        lhs.rows[3].x * rhs.rows[0].y + lhs.rows[3].y * rhs.rows[1].y + lhs.rows[3].z * rhs.rows[2].y + lhs.rows[3].w * rhs.rows[3].y,
+        lhs.rows[3].x * rhs.rows[0].z + lhs.rows[3].y * rhs.rows[1].z + lhs.rows[3].z * rhs.rows[2].z + lhs.rows[3].w * rhs.rows[3].z,
+        lhs.rows[3].x * rhs.rows[0].w + lhs.rows[3].y * rhs.rows[1].w + lhs.rows[3].z * rhs.rows[2].w + lhs.rows[3].w * rhs.rows[3].w
+    );
+}
+
 } // namespace Math
