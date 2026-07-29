@@ -565,7 +565,11 @@ inline Vector<T, N> NormalizeSafe(const Vector<T, N>& value, const Vector<T, N>&
 
 inline Vector<float, 3> NormalizeSafe(const Vector<float, 3>& value, const Vector<float, 3>& fallback, float epsilon = std::numeric_limits<float>::epsilon() * static_cast<float>(8)) noexcept {
     const float lengthSquared = value.x * value.x + value.y * value.y + value.z * value.z;
-    return lengthSquared <= epsilon * epsilon ? fallback : value / std::sqrt(lengthSquared);
+    if (lengthSquared <= epsilon * epsilon) {
+        return fallback;
+    }
+    const float inverseLength = 1.0F / std::sqrt(lengthSquared);
+    return { value.x * inverseLength, value.y * inverseLength, value.z * inverseLength };
 }
 
 template <ArithmeticScalar T, std::size_t N>

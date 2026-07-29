@@ -180,7 +180,7 @@ constexpr T SmoothStep(T edge0, T edge1, T value) noexcept {
 template <ArithmeticScalar T>
 constexpr T SmootherStep(T edge0, T edge1, T value) noexcept {
     const T t = Saturate(InverseLerp(edge0, edge1, value));
-    return t * t * t * (t * (t * static_cast<T>(6) - static_cast<T>(15) + static_cast<T>(10)));
+    return t * t * t * (t * (t * static_cast<T>(6) - static_cast<T>(15)) + static_cast<T>(10));
 }
 
 template <ArithmeticScalar T>
@@ -190,11 +190,11 @@ constexpr bool NearlyEqual(
     T absoluteEpsilon = std::numeric_limits<T>::epsilon() * static_cast<T>(4), 
     T relativeEpsilon = std::numeric_limits<T>::epsilon() * static_cast<T>(8)) noexcept {
     // 接近 0 时看绝对误差，数值很大时看相对误差；只使用一种误差会在另一端失效。
-    const T difference = Abs(lhs, rhs);
+    const T difference = Abs(lhs - rhs);
     if (difference <= absoluteEpsilon) {
         return true;
     }
-    return difference <= Max(Abs(lha), Abs(rhs)) * relativeEpsilon;
+    return difference <= Max(Abs(lhs), Abs(rhs)) * relativeEpsilon;
 }
 
 template <FloatingScalar T>
@@ -238,7 +238,7 @@ constexpr T AlignUp(T value, T alignment) noexcept {
 }
 
 template <typename T>
-constexpr T Select(bool condition, const T& whenTrue, const T& whenFlase) noexcept {
+constexpr T Select(bool condition, const T& whenTrue, const T& whenFalse) noexcept {
     return condition ? whenTrue : whenFalse;
 }
 

@@ -28,7 +28,7 @@ namespace Math
             }
         }
 
-        explicit constexpr Matrix(const std::array<T, C>, R> rowValues) noexcept : rows(rowValues) {}
+        explicit constexpr Matrix(const std::array<Vector<T, C>, R>& rowValues) noexcept : rows(rowValues) {}
 
         template <typename... Values>
         requires(sizeof...(Values) == R * C && (std::convertible_to<Values, T> && ...))
@@ -48,9 +48,9 @@ namespace Math
             }
         }
 
-        static consexpr Identity() noexcept 
+        static constexpr Matrix Identity() noexcept
             requires(R == C) {
-            return Matix(static_cast<T>(1));
+            return Matrix(static_cast<T>(1));
         }
 
         constexpr Vector<T, C>& operator[](std::size_t row) noexcept {
@@ -217,15 +217,15 @@ constexpr bool operator!=(const Matrix<T, R, C>& lhs, const Matrix<T, R, C>& rhs
     return !(lhs == rhs);
 }
 
-#define DEFINE_MATRIX_BINARY_OPERATOR(OPERATOR) \
-    template <ArithmeticScalar Lhs, ArithmeticScalar Rhs, std::size_t R, std::size_t C> \
+#define DEFINE_MATRIX_BINARY_OPERATOR(OPERATOR)                                                             \
+    template <ArithmeticScalar Lhs, ArithmeticScalar Rhs, std::size_t R, std::size_t C>                     \
     constexpr auto operator OPERATOR (const Matrix<Lhs, R, C>& lhs, const Matrix<Rhs, R, C> rhs) noexcept { \
-        using Result = std::common_type_t<Lhs, Rhs>; \
-        Matrix<Result, R, C> output{}; \
-        for (std::size_t row = 0; row < R; ++row) { \
-            output[row] = lhs[row] + rhs[row]; \
-        } \
-        return output; \
+        using Result = std::common_type_t<Lhs, Rhs>;                                                        \
+        Matrix<Result, R, C> output{};                                                                      \
+        for (std::size_t row = 0; row < R; ++row) {                                                         \
+            output[row] = lhs[row] OPERATOR rhs[row];                                                       \
+        }                                                                                                   \
+        return output;                                                                                      \
     }
 
 DEFINE_MATRIX_BINARY_OPERATOR(+)
@@ -302,7 +302,7 @@ constexpr Matrix<T, R, C> operator/=(const Matrix<T, R, C>& lhs, U scalar) noexc
 template <ArithmeticScalar Lhs, ArithmeticScalar Rhs, std::size_t R, std::size_t C>
 constexpr auto operator*(const Matrix<Lhs, R, C>& lhs, const Vector<Rhs, C>& rhs) noexcept {
     using Result = std::common_type_t<Lhs, Rhs>;
-    Vector<Result, C> output{};
+    Vector<Result, R> output{};
     for (std::size_t row = 0; row < R; ++row) {
         output[row] = Dot(lhs[row], rhs);
     }
@@ -319,7 +319,7 @@ constexpr auto operator*(const Matrix<Lhs, R, Shared>& lhs, const Matrix<Rhs, Sh
         }
     }
     Matrix<Result, R, C> output{};
-    for (std::size_t row = 0; row < R, ++row) {
+    for (std::size_t row = 0; row < R; ++row) {
         for (std::size_t column = 0; column < C; ++column) {
             output.rows[row][column] = Dot(lhs.rows[row], rhsColumns.rows[column]);
         }
@@ -343,7 +343,7 @@ EXCALIBUR_FORCE_INLINE constexpr Vector<float, 4> operator*(const Matrix<float, 
 
 EXCALIBUR_FORCE_INLINE constexpr Matrix<float, 4, 4> operator*(const Matrix<float, 4, 4>& lhs, const Matrix<float, 4, 4>& rhs) noexcept {
 #if MATH_HAS_SSE2
-    if (std::is_constant_evaluated()) {
+    if (!std::is_constant_evaluated()) {
         return detail::MultiplyFloat4x4(lhs, rhs);
     }
 #endif
@@ -356,10 +356,10 @@ EXCALIBUR_FORCE_INLINE constexpr Matrix<float, 4, 4> operator*(const Matrix<floa
         lhs.rows[1].x * rhs.rows[0].y + lhs.rows[1].y * rhs.rows[1].y + lhs.rows[1].z * rhs.rows[2].y + lhs.rows[1].w * rhs.rows[3].y,
         lhs.rows[1].x * rhs.rows[0].z + lhs.rows[1].y * rhs.rows[1].z + lhs.rows[1].z * rhs.rows[2].z + lhs.rows[1].w * rhs.rows[3].z,
         lhs.rows[1].x * rhs.rows[0].w + lhs.rows[1].y * rhs.rows[1].w + lhs.rows[1].z * rhs.rows[2].w + lhs.rows[1].w * rhs.rows[3].w,
-        lhs.rows[2].x * rhs.rows[0].x + lhs.rows[2].y * rhs.rows[2].x + lhs.rows[2].z * rhs.rows[2].x + lhs.rows[2].w * rhs.rows[3].x,
-        lhs.rows[2].x * rhs.rows[0].y + lhs.rows[2].y * rhs.rows[2].y + lhs.rows[2].z * rhs.rows[2].y + lhs.rows[2].w * rhs.rows[3].y,
-        lhs.rows[2].x * rhs.rows[0].z + lhs.rows[2].y * rhs.rows[2].z + lhs.rows[2].z * rhs.rows[2].z + lhs.rows[2].w * rhs.rows[3].z,
-        lhs.rows[2].x * rhs.rows[0].w + lhs.rows[2].y * rhs.rows[2].w + lhs.rows[2].z * rhs.rows[2].w + lhs.rows[2].w * rhs.rows[3].w,
+        lhs.rows[2].x * rhs.rows[0].x + lhs.rows[2].y * rhs.rows[1].x + lhs.rows[2].z * rhs.rows[2].x + lhs.rows[2].w * rhs.rows[3].x,
+        lhs.rows[2].x * rhs.rows[0].y + lhs.rows[2].y * rhs.rows[1].y + lhs.rows[2].z * rhs.rows[2].y + lhs.rows[2].w * rhs.rows[3].y,
+        lhs.rows[2].x * rhs.rows[0].z + lhs.rows[2].y * rhs.rows[1].z + lhs.rows[2].z * rhs.rows[2].z + lhs.rows[2].w * rhs.rows[3].z,
+        lhs.rows[2].x * rhs.rows[0].w + lhs.rows[2].y * rhs.rows[1].w + lhs.rows[2].z * rhs.rows[2].w + lhs.rows[2].w * rhs.rows[3].w,
         lhs.rows[3].x * rhs.rows[0].x + lhs.rows[3].y * rhs.rows[1].x + lhs.rows[3].z * rhs.rows[2].x + lhs.rows[3].w * rhs.rows[3].x,
         lhs.rows[3].x * rhs.rows[0].y + lhs.rows[3].y * rhs.rows[1].y + lhs.rows[3].z * rhs.rows[2].y + lhs.rows[3].w * rhs.rows[3].y,
         lhs.rows[3].x * rhs.rows[0].z + lhs.rows[3].y * rhs.rows[1].z + lhs.rows[3].z * rhs.rows[2].z + lhs.rows[3].w * rhs.rows[3].z,
@@ -368,8 +368,8 @@ EXCALIBUR_FORCE_INLINE constexpr Matrix<float, 4, 4> operator*(const Matrix<floa
 }
 
 template <ArithmeticScalar T, std::size_t R, std::size_t C>
-constexpr Matrix<T, R, C> Transpose(const Matrix<T, R, C>& matrix) noexcept {
-    Matrix<T, R, C> output{};
+constexpr Matrix<T, C, R> Transpose(const Matrix<T, R, C>& matrix) noexcept {
+    Matrix<T, C, R> output{};
     for (std::size_t column = 0; column < C; ++column) {
         for (std::size_t row = 0; row < R; ++row) {
             output.rows[column][row] = matrix[row][column];
@@ -390,8 +390,8 @@ constexpr auto Hadamard(const Matrix<Lhs, R, C>& lhs, const Matrix<Rhs, R, C> rh
 
 template <ArithmeticScalar T, std::size_t N>
 constexpr T Trace(const Matrix<T, N, N>& matrix) noexcept {
-    T output;
-    for (std::index = 0; index < N; ++index) {
+    T output{};
+    for (std::size_t index = 0; index < N; ++index) {
         output += matrix[index][index];
     }
     return output;
@@ -421,8 +421,9 @@ constexpr T Determinant(const Matrix<T, 4, 4> matrix) noexcept {
                 }
             }
         }
-    }
-    return matrix[0][1] * laplaceExpand(0) - matrix[0][1] * laplaceExpand(1) + matrix[0][2] * laplaceExpand(2) - matrix[0][3] * laplaceExpand(3);
+        return Determinant(minor);
+    };
+    return matrix[0][0] * laplaceExpand(0) - matrix[0][1] * laplaceExpand(1) + matrix[0][2] * laplaceExpand(2) - matrix[0][3] * laplaceExpand(3);
 }
 
 /**
