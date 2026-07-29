@@ -876,8 +876,6 @@ constexpr Vector<T, 3> TransformVector(const Matrix<T, 4, 4>& matrix, const Vect
 
 } // namespace Math
 
-// Matrix 与常用变换函数默认可直接使用；与 Vector.hpp 的全局导出约定一致。
-
 using bool2x2    = Math::Matrix<bool, 2, 2>;
 using bool2x3    = Math::Matrix<bool, 2, 3>;
 using bool2x4    = Math::Matrix<bool, 2, 4>;
