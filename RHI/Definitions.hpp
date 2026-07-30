@@ -1236,4 +1236,19 @@ struct RHIDepthStencilTargetDesc {
     RHIResourceState stateAfter = RHIResourceState::DepthWrite;
 };
 
+struct RHIRenderPassDesc {
+    std::string debugName;
+    RHIRect2D renderArea{};
+    std::vector<RHIRenderTargetDesc> colorTargets;
+    std::optional<RHIDepthStencilTargetDesc> depthStencilTarget;
+};
+
+struct RHIFrameBufferDesc {
+    std::string debugName;
+    RHIRenderPass renderPass{};
+    std::vector<RHITextureView> attachments;
+    RHIExtent2D extent{};
+    u32 layers = 1;
+};
+
 } // namespace RHI
