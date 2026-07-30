@@ -71,7 +71,7 @@ using RHIMaterial = RHIHandle<RHIMaterialTag>;
 
 template <typename Enum>
 [[nodiscard]] constexpr auto RHIEnumToUnderlying(Enum value) noexcept {
-    static_asset(std::is_enum_v<Enum>, "RHIEnumToUnderlying requires an enum type");
+    static_assert(std::is_enum_v<Enum>, "RHIEnumToUnderlying requires an enum type");
     return static_cast<std::underlying_type_t<Enum>>(value);
 }
 
@@ -911,6 +911,329 @@ enum class RHIVertexFormat : u8 {
 enum class RHIVertexInputRate : u8 {
     PerVertex,
     PerInstance
+};
+
+struct RHIVertexAttributeDesc {
+    std::string semanticName;
+    u32 semanticIndex = 0;
+    u32 location = 0;
+    u32 binding = 0;
+    RHIVertexFormat format = RHIVertexFormat::Float32x3;
+    u64 offset = 0;
+};
+
+struct RHIVertexBufferLayoutDesc {
+    u32 binding = 0;
+    u32 stride = 0;
+    RHIVertexInputRate inputRate = RHIVertexInputRate::PerVertex;
+    u32 stepRate = 1;
+    std::vector<RHIVertexAttributeDesc> attributes;
+};
+
+enum class RHIPrimitiveTopology : u8 {
+    PointList,
+    LineList,
+    LineStrip,
+    TriangleList,
+    TriangleStrip,
+    PatchList       ///< patch 图元，用于 tessellation 阶段，控制点数量由管线状态指定。
+};
+
+enum class RHIPolygonMode : u8 {
+    Fill,
+    Line,
+    Point
+};
+
+enum class RHICullMode : u8 {
+    None,
+    Front,
+    Back,
+    FrontAndBack
+};
+
+enum class RHIFrontFace : u8 {
+    CounterClockWise,
+    ClockWise
+};
+
+enum class RHIStencilOp : u8 {
+    Keep,                       ///< 保留当前 stencil 值不变。
+    Zero,                       ///< 将 stencil 值写为 0。
+    Replace,                    ///< 将 stencil 值替换为 reference 值。
+    IncrementClamp,             ///< stencil 值加 1，并在最大值处饱和。
+    DecrementClamp,             ///< stencil 值减 1，并在 0 处饱和。
+    Invert,                     ///< 按位反转 stencil 值。
+    IncrementWrap,              ///< stencil 值加 1，超过最大值后回绕到 0。
+    DecrementWarp               ///< stencil 值减 1，低于 0 后回绕到最大值。
+};
+
+enum class RHIBlendFactor : u8 {
+    Zero,
+    One,
+    SourceColor,
+    OneMinusSourceColor,
+    DestinationColor,
+    OneMinusDestinationColor,
+    SourceAlpha,
+    OneMinusSourceAlpha,
+    DestinationAlpha,
+    OneMinusDestinationAlpha,
+    ConstantColor,
+    OneMinusConstantColor,
+    ConstantAlpha,
+    OneMinusConstantAlpha,
+};
+
+enum class RHIBlendOp : u8 {
+    Add,
+    Subtract,
+    ReverseSubtract,
+    Min,
+    Max
+};
+
+enum class RHILogicOp : u8 {
+    Clear,              ///< 输出全 0，忽略源和目标颜色。
+    And,                ///< 输出 source AND destination。
+    AndReverse,         ///< 输出 source AND (NOT destination)。
+    Copy,               ///< 输出 source，等价于直接写入源颜色。
+    AndInverted,        ///< 输出 (NOT source) AND destination。
+    NoOp,               ///< 保留 destination，不写入源颜色。
+    Xor,                ///< 输出 source XOR destination。
+    Or,                 ///< 输出 source OR destination。
+    Nor,                ///< 输出 NOT (source OR destination)。
+    Equivalent,         ///< 输出 NOT (source XOR destination)，即逐位等价。
+    Invert,             ///< 输出 NOT destination，反转目标颜色位。
+    OrReverse,          ///< 输出 source OR (NOT destination)。
+    CopyInverted,       ///< 输出 NOT source。
+    OrInverted,         ///< 输出 (NOT source) OR destination。
+    Nand,               ///< 输出 NOT (source AND destination)。
+    Set                 ///< 输出全 1，忽略源和目标颜色。
+};
+
+enum class RHIColorWriteMask : u8 {
+    None = 0,
+    R = 1u << 0,
+    G = 1u << 1,
+    B = 1u << 2,
+    A = 1u << 3,
+    All = 0x0F
+};
+
+template <>
+struct RHIEnableEnumFlags<RHIColorWriteMask> : std::true_type {};
+
+[[nodiscard]] constexpr RHIColorWriteMask operator|(RHIColorWriteMask lhs, RHIColorWriteMask rhs) noexcept {
+    return RHIEnumBitOr(lhs, rhs);
+}
+
+[[nodiscard]] constexpr RHIColorWriteMask operator&(RHIColorWriteMask lhs, RHIColorWriteMask rhs) noexcept {
+    return RHIEnumBitAnd(lhs, rhs);
+}
+
+constexpr RHIColorWriteMask& operator|=(RHIColorWriteMask& lhs, RHIColorWriteMask rhs) noexcept {
+    lhs = lhs | rhs;
+    return lhs;
+}
+
+enum class RHIDynamicState : u8 {
+    Viewport,
+    Scissor,
+    LineWidth,
+    DepthBias,
+    BlendConstants,
+    StencilReference
+};
+
+struct RHIInputAssemblyState {
+    RHIPrimitiveTopology topology = RHIPrimitiveTopology::TriangleList;
+    b8 primitiveRestart = false;
+    u32 patchControlPoints = 0;
+};
+
+struct RHIRasterState {
+    RHIPolygonMode polygonMode = RHIPolygonMode::Fill;
+    RHICullMode cullMode = RHICullMode::Back;
+    RHIFrontFace frontFace = RHIFrontFace::CounterClockWise;
+    b8 depthClampEnable = false;
+    b8 depthBiasEnable = false;
+    f32 depthBiasConstantFactor = 0.0F;
+    f32 depthBiasClamp = 0.0F;
+    f32 depthBiasSlopeFactor = 0.0F;
+    f32 lineWidth = 1.0F;
+};
+
+struct RHIStencilFaceState {
+    RHIStencilOp failOp = RHIStencilOp::Keep;
+    RHIStencilOp passOp = RHIStencilOp::Keep;
+    RHIStencilOp depthFailOp = RHIStencilOp::Keep;
+    RHICompareOp compareOp = RHICompareOp::Always;
+    u32 compareMask = 0xFFFFFFFFu;
+    u32 writeMask = 0xFFFFFFFFu;
+    u32 reference = 0;
+};
+
+struct RHIDepthStencilState {
+    b8 depthTestEnable = true;
+    b8 depthWriteEnable = true;
+    RHICompareOp depthCompareOp = RHICompareOp::Less;
+    b8 depthBoundsTestEnable = false;
+    f32 minDepthBounds = 0.0F;
+    f32 maxDepthBounds = 1.0F;
+    b8 stencilTestEnable = false;
+    RHIStencilFaceState front{};
+    RHIStencilFaceState back{};
+};
+
+struct RHIMultisampleState {
+    RHISampleCount samples = RHISampleCount::Count1;
+    b8 sampleShadingEnable = false;
+    f32 minSampleShading = 1.0F;
+    u64 sampleMask = std::numeric_limits<u64>::max();
+    b8 alphaToCoverageEnable = false;
+    b8 alphaToOneEnable = false;
+};
+
+struct RHIColorBlendAttachmentState {
+    b8 blendEnable = false;
+    RHIBlendFactor sourceColor = RHIBlendFactor::One;
+    RHIBlendFactor destinationColor = RHIBlendFactor::Zero;
+    RHIBlendOp colorOp = RHIBlendOp::Add;
+    RHIBlendFactor sourceAlpha = RHIBlendFactor::One;
+    RHIBlendFactor destinationAlpha = RHIBlendFactor::Zero;
+    RHIBlendOp blendOp = RHIBlendOp::Add;
+    RHIColorWriteMask writeMask = RHIColorWriteMask::All;
+};
+
+struct RHIBlendState {
+    b8 loginOpEnable = false;
+    RHILogicOp logicOp = RHILogicOp::Copy;
+    std::array<f32, 4> blendConstants{0.0F, 0.0F, 0.0F, 0.0F};
+    std::vector<RHIColorBlendAttachmentState> attachments;
+};
+
+struct RHIGraphicsPipelineDesc {
+    std::string debugName;
+    RHIPipelineCache cache{};
+    RHIPipelineLayout layout{};
+    std::vector<RHIShaderDesc> shaders;
+    std::vector<RHIShaderSpecializationConstant> specializationConstants;
+    std::vector<RHIVertexBufferLayoutDesc> vertexBuffers;
+    RHIInputAssemblyState inputAssembly{};
+    RHIRasterState raster{};
+    RHIDepthStencilState depthStencil{};
+    RHIMultisampleState multisample{};
+    RHIBlendState blend{};
+    std::vector<RHIDynamicState> dynamicState{RHIDynamicState::Viewport, RHIDynamicState::Scissor};
+    std::vector<RHIFormat> colorFormats;
+    RHIFormat depthStencilFormat = RHIFormat::Undefined;
+    RHIRenderPass compatibleRenderPass{};
+    u32 subpass = 0;
+};
+
+struct RHIComputePipelineDesc {
+    std::string debugName;
+    RHIPipelineCache cache{};
+    RHIPipelineLayout layout{};
+    RHIShaderDesc shader{};
+    std::vector<RHIShaderSpecializationConstant> specializationConstants;
+};
+
+struct RHIPipelineCacheDesc {
+    std::string debugName;
+    std::vector<std::byte> initailData;
+    b8 allowSerialization = true;
+};
+
+enum class RHIQueryType : u8 {
+    Timestamp,              ///< GPU 时间戳查询，用于测量 pass 或命令区间的 GPU 执行时间。
+    Occlusion,              ///< 遮挡查询，用于统计通过深度/模板测试的样本数或可见性。
+    PipelineStatistics,     ///< 管线统计查询，用于统计 shader 调用、图元数量等性能计数。
+};
+
+enum class RHIPipelineStatisticFlags : u32 {
+    None                            = 0,        ///< 不启用任何管线统计项。
+    InputAssemblyVertices           = 1u << 0,  ///< 统计输入装配阶段读取的顶点数量。
+    InputAssemblyPrimitives         = 1u << 1,  ///< 统计输入装配阶段生成的图元数量。
+    VertexShaderInvocations         = 1u << 2,  ///< 统计 vertex shader 调用次数。
+    GeometryShaderInvocations       = 1u << 3,  ///< 统计 geometry shader 调用次数。
+    GeometryShaderPrimitives        = 1u << 4,  ///< 统计 geometry shader 输出的图元数量。
+    ClippingInvocations             = 1u << 5,  ///< 统计进入裁剪阶段的图元数量。
+    ClippingPrimitives              = 1u << 6,  ///< 统计通过裁剪并继续光栅化的图元数量。
+    FragmentShaderInvocations       = 1u << 7,  ///< 统计 fragment/pixel shader 调用次数。
+    TessControlShaderPatches        = 1u << 8,  ///< 统计 tessellation control shader 处理的 patch 数量。
+    TessEvaluationShaderInvocations = 1u << 9,  ///< 统计 tessellation evaluation shader 调用次数。
+    ComputeShaderInvocations        = 1u << 10  ///< 统计 compute shader invocation 数量。
+};
+
+template <>
+struct RHIEnableEnumFlags<RHIPipelineStatisticFlags> : std::true_type {};
+
+[[nodiscard]] constexpr RHIPipelineStatisticFlags operator|(RHIPipelineStatisticFlags lhs, RHIPipelineStatisticFlags rhs) noexcept {
+    return RHIEnumBitOr(lhs, rhs);
+}
+
+[[nodiscard]] constexpr RHIPipelineStatisticFlags operator&(RHIPipelineStatisticFlags lhs, RHIPipelineStatisticFlags rhs) noexcept {
+    return RHIEnumBitAnd(lhs, rhs);
+}
+
+constexpr RHIPipelineStatisticFlags& operator|=(RHIPipelineStatisticFlags& lhs, RHIPipelineStatisticFlags rhs) noexcept {
+    lhs = lhs | rhs;
+    return lhs;
+}
+
+struct RHIQueryPoolDesc {
+    std::string debugName;
+    RHIQueryType type = RHIQueryType::Timestamp;
+    u32 queryCount = 1;
+    RHIPipelineStatisticFlags statistics = RHIPipelineStatisticFlags::None;
+};
+
+enum class RHILoadOp : u8 {
+    Load,
+    Clear,
+    DontCare
+};
+
+enum class RHIStoreOp : u8 {
+    Store,
+    DontCare
+};
+
+/// MSAA resolve 行为。Average 是最常见的颜色 resolve；深度 resolve 后端支持差异较大。
+enum class RHIResolveMode : u8 {
+    None,
+    Average,
+    Min,
+    Max,
+    SampleZero
+};
+
+struct RHIRenderTargetDesc {
+    RHITextureView view{};
+    RHITextureView resolveView{};
+    RHIResolveMode resolveMode = RHIResolveMode::None;
+    RHILoadOp loadOp = RHILoadOp::Load;
+    RHIStoreOp storeOp = RHIStoreOp::Store;
+    RHIClearColor clearColor{};
+    RHIResourceState stateBefore = RHIResourceState::Undefined;
+    RHIResourceState stateAfter = RHIResourceState::RenderTarget;
+};
+
+struct RHIDepthStencilTargetDesc {
+    RHITextureView view{};
+    RHITextureView depthResolveView{};
+    RHITextureView stencilResolveView{};
+    RHIResolveMode depthResolveMode = RHIResolveMode::None;
+    RHIResolveMode stencilResolveMode = RHIResolveMode::None;
+    RHILoadOp depthLoadOp = RHILoadOp::Load;
+    RHIStoreOp depthStoreOp = RHIStoreOp::Store;
+    RHILoadOp stencilLoadOp = RHILoadOp::DontCare;
+    RHIStoreOp stencilStoreOp = RHIStoreOp::DontCare;
+    RHIClearDepthStencil clearValue{};
+    RHIResourceState stateBefore = RHIResourceState::Undefined;
+    RHIResourceState stateAfter = RHIResourceState::DepthWrite;
 };
 
 } // namespace RHI
