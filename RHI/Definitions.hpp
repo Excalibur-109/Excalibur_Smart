@@ -840,4 +840,77 @@ struct RHIResourceBinding {
     RHISampler sampler{};
 };
 
+struct RHIBindSetDesc {
+    std::string debugName;
+    RHIBindSetLayout layout{};
+    std::vector<RHIResourceBinding> binding;
+};
+
+struct RHIPushConstantRange {
+    RHIShaderStage stages = RHIShaderStage::AllGraphics;
+    u32 offset = 0;
+    u32 size = 0;
+};
+
+struct RHIPipelineLayoutDesc {
+    std::string debugName;
+    std::vector<RHIBindSetLayout> bindSetLayouts;
+    std::vector<RHIPushConstantRange> pushConstant;
+};
+
+struct RHIShaderResourceReflection {
+    std::string name;
+    u32 set = 0;
+    u32 binding = 0;
+    RHIBindingType type = RHIBindingType::UniformBuffer;
+    RHIShaderStage stage = RHIShaderStage::None;
+    u32 arrayCount = 1;
+    u32 size = 0;
+};
+
+struct RHIShaderParameterReflection {
+    std::string name;
+    std::string semanticName;
+    u32 semanticIndex = 0;
+    u32 location = 0;
+    RHIFormat format = RHIFormat::Undefined;
+};
+
+struct RHIShaderReflectionDesc {
+    std::vector<RHIShaderResourceReflection> resources;
+    std::vector<RHIShaderParameterReflection> inputs;
+    std::vector<RHIShaderParameterReflection> outputs;
+    std::vector<RHIPushConstantRange> pushConstants;
+};
+
+enum class RHIVertexFormat : u8 {
+    Float32,
+    Float32x2,
+    Float32x3,
+    Float32x4,
+    UInt32,
+    UInt32x2,
+    UInt32x3,
+    UInt32x4,
+    SInt32,
+    SInt32x2,
+    SInt32x3,
+    SInt32x4,
+    UNorm8x4,
+    SNorm8x4,
+    UInt16x2,
+    UInt16x4,
+    SInt16x2,
+    SInt16x4,
+    UNorm16x2,
+    UNorm16x4,
+    SNorm16x2,
+    SNorm16x4
+};
+
+enum class RHIVertexInputRate : u8 {
+    PerVertex,
+    PerInstance
+};
+
 } // namespace RHI
