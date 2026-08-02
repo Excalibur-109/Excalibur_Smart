@@ -1251,4 +1251,640 @@ struct RHIFrameBufferDesc {
     u32 layers = 1;
 };
 
+enum class RHIColorSpace : u8 {
+    SRGBNonlinear,      ///< 标准 sRGB 非线性色彩空间，普通 SDR swapchain 默认选择。
+    DisplayP3Nonlinear, ///< Display P3 非线性色彩空间，适合广色域 SDR 输出。
+    ExtendSGBLinear,    ///< 扩展 sRGB 线性色彩空间，适合宽范围线性颜色输出。
+    HDR10ST2084,        ///< HDR10 PQ/ST2084 色彩空间，适合 HDR10 显示链路。
+    HDR10HLG            ///< HDR HLG 色彩空间，适合广播或 HLG HDR 输出。
+};
+
+enum class RHISurfaceTransform : u8 {
+    Identity,
+    Rotate90,
+    Rotate180,
+    Rotate270,
+    HorizontalMirrored,
+    HorizontalMirroredRotate90,
+    HorizontalMirroredRotate180,
+    HorizontalMirroredRotate270,
+    Inherit
+};
+
+enum class RHICompositeAlphaMode : u8 {
+    Opaque,
+    Premultiplied,
+    PostMultiplied,
+    Inherit
+};
+
+struct RHISwapchainDesc {
+    std::string debugName;
+    RHIExtent2D extent{};
+    RHIFormat preferredFormat = RHIFormat::BGRA_SRGB;
+    RHIColorSpace colorSpace = RHIColorSpace::SRGBNonlinear;
+    RHIPresentMode presentMode = RHIPresentMode::FIFO;
+    u32 imageCount = 2;
+    RHISurfaceTransform preTransform = RHISurfaceTransform::Identity;
+    RHICompositeAlphaMode compositeAlpha = RHICompositeAlphaMode::Opaque;
+    bool allowTearing = false;
+    bool fullscreen = false;
+    bool hdr = false;
+};
+
+struct RHITextureSubresourceRange {
+    RHITextureAspect asect = RHITextureAspect::All;
+    u32 baseMipLevel = 0;
+    u32 mipLevelCount = 1;
+    u32 baseArrayLayer = 0;
+    u32 arrayLayersCount = 1;
+};
+
+struct RHIGlobalBarrier {
+    RHIPipelineStage sourceStage = RHIPipelineStage::AllCommands;
+    RHIPipelineStage destinationStage = RHIPipelineStage::AllCommands;
+    RHIAccessFlags sourceFlags = RHIAccessFlags::MemoryWrite;
+    RHIAccessFlags destinationFlags = RHIAccessFlags::MemoryRead;
+};
+
+struct RHITextureBarrier {
+    RHITexture texture{};
+    RHITextureSubresourceRange range{};
+    RHIResourceState before = RHIResourceState::Undefined;
+    RHIResourceState after = RHIResourceState::Common;
+    RHIPipelineStage sourceStages = RHIPipelineStage::AllCommands;
+    RHIPipelineStage destinationStages = RHIPipelineStage::AllCommands;
+    RHIAccessFlags sourceAccess = RHIAccessFlags::None;
+    RHIAccessFlags destinationAccess = RHIAccessFlags::None;
+    RHIQueueType sourceQueue = RHIQueueType::Graphics;
+    RHIQueueType destinationQueue = RHIQueueType::Graphics;
+    bool discardContents = false;
+};
+
+struct RHIBufferBarrier {
+    RHIBuffer buffer{};
+    u64 offset = 0;
+    u64 size = RHI_WHOLE_SIZE;
+    RHIResourceState before = RHIResourceState::Undefined;
+    RHIResourceState after = RHIResourceState::Common;
+    RHIPipelineStage sourceStages = RHIPipelineStage::AllCommands;
+    RHIPipelineStage destinationStages = RHIPipelineStage::AllCommands;
+    RHIAccessFlags sourceAccess = RHIAccessFlags::None;
+    RHIAccessFlags destinationAccess = RHIAccessFlags::None;
+    RHIQueueType sourceQueue = RHIQueueType::Graphics;
+    RHIQueueType destinationQueue = RHIQueueType::Graphics;
+};
+
+struct RHIResourceBarriers {
+    std::vector<RHIGlobalBarrier> globals;
+    std::vector<RHITextureBarrier> textures;
+    std::vector<RHIBufferBarrier> buffers;
+};
+
+struct RHIBufferUploadDesc {
+    RHIBuffer destination{};
+    u64 destinationOffset = 0;
+    std::vector<std::byte> data;
+};
+
+struct RHITextureUploadDesc {
+    RHITexture destination{};
+    u32 mipLevel = 0;
+    u32 arrayLayer = 0;
+    RHIOffset3D offset{};
+    RHIOffset3D extent{};
+    u64 bytesPerRow = 0;
+    u64 rowsPerImage = 0;
+    std::vector<std::byte> data;
+};
+
+struct RHIUploadBatchDesc {
+    std::vector<RHIBufferUploadDesc> buffers;
+    std::vector<RHITextureUploadDesc> textures;
+};
+
+struct RHIBufferCopyDesc {
+    RHIBuffer source{};
+    RHIBuffer destination{};
+    u64 sourceOffset = 0;
+    u64 destinationOffset = 0;
+    u64 size = 0;
+};
+
+struct RHITextureCopyLocation {
+    RHITexture texture{};
+    RHITextureAspect aspect = RHITextureAspect::Color;
+    u32 mipLevel = 0;
+    u32 arrayLayer = 0;
+    RHIOffset3D offset{};
+};
+
+struct RHITextureCopyDesc {
+    RHITextureCopyLocation source{};
+    RHITextureCopyLocation destination{};
+    RHIExtent3D extent{};
+};
+
+struct RHIBufferTextureCopyDesc {
+    RHIBuffer buffer{};
+    RHITextureCopyLocation texture{};
+    u64 bufferOffset = 0;
+    u64 bytesPerRow = 0;
+    u64 rowsPerImage = 0;
+    RHIExtent3D extent{};
+};
+
+struct RHITextureBlitDesc {
+    RHITextureCopyLocation source{};
+    RHITextureCopyLocation destination{};
+    RHIExtent3D sourceExtent{};
+    RHIExtent3D destinationExtent{};
+    RHIFilterMode filter = RHIFilterMode::Linear;
+};
+
+struct RHIMipmapGenerationDesc {
+    RHITexture texture{};
+    RHITextureAspect aspect = RHITextureAspect::Color;
+    u32 baseArrayLayer = 0;
+    u32 arrayLayerCount = 0;
+    RHIFilterMode filter = RHIFilterMode::Linear;
+};
+
+enum class RHIIndexType : u8 {
+    UInt16,
+    UInt32,
+};
+
+struct RHIVertexStream {
+    RHIBuffer buffer{};
+    u32 binding = 0;
+    u64 offset = 0;
+    u64 stride = 0;
+};
+
+struct RHIIndexStream {
+    RHIBuffer buffer{};
+    RHIIndexType indexType = RHIIndexType::UInt32;
+    u64 offset = 0;
+    u32 indexCount = 0;
+};
+
+struct RHIBoundingBox {
+    float3 min{0.0F};
+    float3 max{0.0F};
+};
+
+struct RHIBoundingSphere {
+    float3 center{0.0F};
+    float radius = 0.0F;
+};
+
+struct RHISubmeshDesc {
+    std::string name;
+    u32 firstVertex = 0;
+    u32 vertexCount = 0;
+    u32 firstIndex = 0;
+    u32 indexCount = 0;
+    u32 firstInstance = 0;
+    u32 instanceCount = 1;
+    i32 materialIndex = -1;
+    RHIBoundingBox boundsBox{};
+    RHIBoundingSphere boundsSphere{};
+};
+
+struct RHIMeshDesc {
+    std::string debugName;
+    std::vector<RHIVertexStream> vertexStream;
+    std::vector<RHIIndexStream> indexStream;
+    std::vector<RHISubmeshDesc> submeshes;
+};
+
+struct RHITextureSlot {
+    std::string name;
+    RHITextureView texture{};
+    RHISampler sampler{};
+};
+
+enum class RHIMaterialParameterType : u8 {
+    Float,
+    Float2,
+    Float3,
+    Float4,
+    Int,
+    UInt,
+    Bool
+};
+
+struct RHIMaterialParameter {
+    std::string name;
+    RHIMaterialParameterType type = RHIMaterialParameterType::Float4;
+    float4 value{0.0F};
+};
+
+struct RHIMaterialDesc {
+    std::string debugName;
+    RHIPipeline pipeline{};
+    std::vector<RHIBindSet> bindSets;
+    std::vector<RHITextureSlot> textureSlots;
+    std::vector<RHIMaterialParameter> parameters;
+    std::vector<std::byte> pushConstantData;
+};
+
+struct RHIDrawCommand {
+    RHIPipeline pipeline{};
+    std::vector<RHIBindSet> bindSets;
+    std::vector<RHIVertexStream> vertexStream;
+    u32 vertexCount = 0;
+    u32 instanceCount = 0;
+    u32 firstVertex = 0;
+    u32 firstInstance = 0;
+};
+
+struct RHIDrawIndexedCommand {
+    RHIPipeline pipeline{};
+    std::vector<RHIBindSet> bindSets;
+    std::vector<RHIVertexStream> vertexStream;
+    RHIIndexStream indexStream{};
+    u32 vertexCount = 0;
+    u32 instanceCount = 0;
+    u32 firstVertex = 0;
+    i32 vertexOffsetElements = 0;
+    u32 firstInstance = 0;
+};
+
+struct RHIDispatchCommand {
+    RHIPipeline pipeline{};
+    std::vector<RHIBindSet> bindSets;
+    u32 groupCountX = 1;
+    u32 groupCountY = 1;
+    u32 groupCountZ = 1;
+};
+
+struct RHIDrawIndirectCommand {
+    RHIPipeline pipeline{};
+    std::vector<RHIBindSet> bindSets;
+    std::vector<RHIVertexStream> vertexStream;
+    RHIBuffer argumentBuffer{};
+    u64 argumentOffset = 0;
+    u32 drawCount = 1;
+    u32 stride = 0;
+    RHIBuffer countBuffer{};
+    u64 countBufferOffset = 0;
+};
+
+struct RHIDrawIndexedIndirectCommand {
+    RHIPipeline pipeline{};
+    std::vector<RHIBindSet> bindSets;
+    std::vector<RHIVertexStream> vertexStream;
+    RHIIndexStream indexStream{};
+    RHIBuffer argementBuffer{};
+    u64 argumentOffset = 0;
+    u32 drawCount = 1;
+    u32 stride = 0;
+    RHIBuffer countBuffer{};
+    u64 countBufferOffset = 0;
+};
+
+struct RHIDispatchIndirectCommand {
+    RHIPipeline pipeline{};
+    std::vector<RHIBindSet> bindSets;
+    RHIBuffer argumentBuffer{};
+    u64 argumentOffset = 0;
+};
+
+struct RHIDebugMarkerDesc {
+    std::string name;
+    std::array<float, 4> color{0.2F, 0.6F, 1.0F, 1.0F};
+};
+
+struct RHITimestampQueryCommand {
+    RHIQueryPool queryPool{};
+    u32 queryIndex = 0;
+    RHIPipelineStage stage = RHIPipelineStage::BottomOfPipe;
+};
+
+struct RHIResetQueryCommand {
+    RHIQueryPool queryPool{};
+    u32 firstQuery = 0;
+    u32 queryCount = 1;
+};
+
+struct RHIResolveQueryCommand {
+    RHIQueryPool queryPool{};
+    u32 firstQuery = 0;
+    u32 queryCount = 1;
+    RHIBuffer destination{};
+    u64 destinationOffset = 0;
+    u64 stride = sizeof(u64);
+    bool waitForResults = true;
+};
+
+struct RHIRenderPassWorkload {
+    std::string passName;
+    RHIViewport viewport{};
+    RHIRect2D scissor{};
+    RHIResourceBarriers barriers;
+    std::vector<RHIDebugMarkerDesc> debugMarkers;
+    std::vector<RHIBufferCopyDesc> bufferCopies;
+    std::vector<RHITextureCopyDesc> textureCopies;
+    std::vector<RHIBufferTextureCopyDesc> bufferToTextureCopies;
+    std::vector<RHIBufferTextureCopyDesc> textureToBufferCopies;
+    std::vector<RHITextureBlitDesc> textureBlits;
+    std::vector<RHIMipmapGenerationDesc> mipmapGenerations;
+    std::vector<RHIResetQueryCommand> queryResets;
+    std::vector<RHITimestampQueryCommand> timestampWrites;
+    std::vector<RHIResolveQueryCommand> queryResolves;
+    std::vector<RHIDrawCommand> draws;
+    std::vector<RHIDrawIndexedCommand> indexedDraws;
+    std::vector<RHIDrawIndirectCommand> indirectCommands;
+    std::vector<RHIDrawIndexedIndirectCommand> indexedIndirectCommands;
+    std::vector<RHIDispatchCommand> dispatches;
+    std::vector<RHIDispatchIndirectCommand> indirectDispatches;
+};
+
+enum class RHIGPUWaitCPUSignalType : u8 {
+    Binary,
+    Timeline
+};
+
+struct RHIGPUWaitCPUSignalDesc {
+    std::string debugName;
+    RHIGPUWaitCPUSignalType type = RHIGPUWaitCPUSignalType::Binary;
+    u64 initialValue = 0;
+};
+
+struct RHICPUWaitGPUSignalDesc {
+    std::string debugName;
+    bool signaled = false;
+};
+
+struct RHIQueueWaitDesc {
+    RHIGPUWaitGPUSignal signal{};
+    u64 value = 0;
+    RHIPipelineStage stages = RHIPipelineStage::AllCommands;
+};
+
+struct RHIQueueSignalDesc {
+    RHIGPUWaitGPUSignal signal{};
+    u64 value = 0;
+};
+
+struct RHIQueueSubmitDesc {
+    std::string debugName;
+    RHIQueueType queue = RHIQueueType::Graphics;
+    std::vector<std::string> passNames;
+    std::vector<RHIQueueWaitDesc> waits;
+    std::vector<RHIQueueSignalDesc> signals;
+    RHICPUWaitGPUSignal cpuWaitGPUSignal{};
+};
+
+struct RHIPresentDesc {
+    RHISwapchain swapchain{};
+    u32 imageIndex = 0;
+    std::vector<RHIGPUWaitGPUSignal> waitSignals;
+    RHIPresentMode presentMode = RHIPresentMode::FIFO;
+    bool allowTearing = false;
+};
+
+struct RHITransformData {
+    float4x4 localToWorld{1.0F};
+    float4x4 previousLocalToWorld{1.0F};
+};
+
+struct RHICameraData {
+    float4x4 view{1.0F};
+    float4x4 projection {1.0F};
+    float4x4 viewProjection{1.0F};              ///< projection * view
+    float4x4 previousViewProjection{1.0F};      ///< 上一帧 viewProjection，用于 motion vector/TAA。
+    float3 position{0.0F};
+    float nearPlane = 1.0F;
+    float farPlane = 1000.0F;
+    float verticalFovRadius = 1.0471975512F;    ///< 垂直视场角，单位弧度，默认约 60 度。
+    float2 jitter{0.0F};                        ///< 当前帧投影抖动，TAA/TSR 常用。
+    float2 previousJitter{0.0F};                ///< 上一帧投影抖动。
+};
+
+enum class RHILightType : u8 {
+    Directional,
+    Point,
+    Spot
+};
+
+struct RHILightData {
+    RHILightType type = RHILightType::Directional;
+    float3 color{1.0F};
+    float intensity = 1.0F;
+    float3 direction{0.0F, -1.0F, 0.0F};
+    float range = 10.F;
+    float3 position{0.0F};
+    float innerConeRadius = 0.0F;
+    float outerConeRadius = 0.7853981634F;         ///< 聚光外锥角，默认约 45 度。
+};
+
+enum class RHIRenderQueue : u8 {
+    Background,
+    Opaque,
+    AlphaTest,
+    Transparent,
+    Overlay
+};
+
+struct RHIRenderObjectDesc {
+    std::string debugName;
+    RHIMesh mesh{};
+    RHIMaterial material{};
+    RHITransformData transform{};
+    u32 submeshIndex = 0;
+    RHIRenderQueue queue = RHIRenderQueue::Opaque;
+    u64 soringKey = 0;
+    u32 layerMask = 0xFFFFFFFFu;
+    RHIBoundingBox worldBounds{};
+    RHIBoundingSphere worldBoundsSphere{};
+    bool visible = true;
+    bool castShadow = true;
+    bool receiveShadow = true;
+};
+
+struct RHISceneEnviromentDesc {
+    float3 ambientColor{0.03F};                     ///< 简单环境光颜色。
+    float exposure = 1.0F;                          ///< 曝光倍率。
+    RHITextureView skyTexture{};                    ///< 可选天空贴图。
+    RHITextureView irradianceTexture{};             ///< 可选漫反射 IBL。
+    RHITextureView prefilterReflectionTexture{};    ///< 可选预滤波反射 IBL。
+    RHITextureView brdfLut{};                       ///< 可选 BRDF LUT。
+};
+
+struct RHIRenderCameraSetDesc {
+    RHICameraData main{};
+    std::vector<RHICameraData> additional;
+};
+
+struct RHIRenderLightSetDesc {
+    std::vector<RHILightData> items;
+};
+
+struct RHIRenderObjectSetDesc {
+    std::vector<RHIRenderObjectDesc> items;
+};
+
+enum class RHIRenderGraphResourceType : u8 {
+    Buffer,
+    Texture,
+    SwapchainImage
+};
+
+enum class RHIRenderGraphResourceFlags : u32 {
+    None = 0,                   ///< 无特殊 RenderGraph 行为，按普通内部资源处理。
+    Imported = 1u << 0,         ///< 资源由外部创建并传入 graph，graph 不负责创建和销毁。
+    Exported = 1u << 1,         ///< 资源结果需要在 graph 外继续使用，不能在最后一次内部读取后立即释放。
+    Transient = 1u << 2,        ///< 资源只在 graph 内短期使用，可参与池化和生命周期压缩。
+    AllowAliasing = 1u << 3,    ///< 允许与生命周期不重叠的其他资源共享底层内存。
+    NeverCull = 1u << 4         ///< 即使看起来未被读取也不能裁剪，适合有调试、读回或外部副作用的资源。
+};
+
+template <>
+struct RHIEnableEnumFlags<RHIRenderGraphResourceFlags> : std::true_type {};
+
+[[nodiscard]] constexpr RHIRenderGraphResourceFlags operator|(RHIRenderGraphResourceFlags lhs, RHIRenderGraphResourceFlags rhs) noexcept {
+    return RHIEnumBitOr(lhs, rhs);
+}
+
+[[nodiscard]] constexpr RHIRenderGraphResourceFlags operator&(RHIRenderGraphResourceFlags lhs, RHIRenderGraphResourceFlags rhs) noexcept {
+    return RHIEnumBitAnd(lhs, rhs);
+}
+
+constexpr RHIRenderGraphResourceFlags& operator|=(RHIRenderGraphResourceFlags& lhs, RHIRenderGraphResourceFlags rhs) noexcept {
+    lhs = lhs | rhs;
+    return lhs;
+}
+
+/// pass 对某个 graph 资源的读写引用。
+struct RHIRenderGraphResourceRef {
+    std::string name;
+    RHIRenderGraphResourceType type = RHIRenderGraphResourceType::Texture;
+    RHIResourceState state = RHIResourceState::ShaderRead;
+    RHIPipelineStage stages = RHIPipelineStage::AllCommands;
+    RHIAccessFlags access = RHIAccessFlags::None;
+};
+
+struct RHIRenderGraphBufferDesc {
+    std::string name;
+    RHIBufferDesc desc{};
+    RHIRenderGraphResourceFlags flags = RHIRenderGraphResourceFlags::None;
+    bool imported = false;
+    RHIBuffer externalHandle{};
+};
+
+struct RHIRenderGraphTextureDesc {
+    std::string name;
+    RHITextureDesc desc{};
+    RHIRenderGraphResourceFlags flags = RHIRenderGraphResourceFlags::None;
+    bool imported = false;
+    RHITexture externalHandle{};
+};
+
+struct RHIRenderGraphAttachmentDesc {
+    std::string resourceName;
+    RHITextureAspect aspect = RHITextureAspect::Color;
+    u32 mipLevel = 0;
+    u32 arrayLayer = 0;
+    RHILoadOp loadOp = RHILoadOp::Clear;
+    RHIStoreOp storeOp = RHIStoreOp::Store;
+    RHIClearValue clearValue{};
+};
+
+enum class RHIRenderGraphPassType : u8 {
+    Raster,
+    Compute,
+    Copy,
+    Present
+};
+
+struct RHIRenderGraphPassDesc {
+    std::string name;                                                   ///< pass 名称，需和 RHIRenderPassWorkload::passName 对应。
+    RHIRenderGraphPassType type = RHIRenderGraphPassType::Raster;       ///< pass 类型。
+    RHIQueueType queue = RHIQueueType::Graphics;                        ///< pass 希望运行在哪类队列。
+    std::vector<std::string> dependOnPasses;                            ///< 仅用于无法从资源读写推导的显式先决 pass；通常应优先声明资源依赖。
+    std::vector<RHIRenderGraphResourceRef> reads;                       ///< pass 读取的资源及访问状态。
+    std::vector<RHIRenderGraphResourceRef> writes;                      ///< pass 写入的资源及访问状态。
+    std::vector<RHIRenderGraphAttachmentDesc> colorAttachments;         ///< color attachments。
+    std::optional<RHIRenderGraphAttachmentDesc> depthStencilAttachment; ///< 可选 depth-stencil attachment。
+    bool allowAsyncCompute = false;                                     ///< compute pass 是否允许异步调度，后端需验证队列和同步支持。
+    bool cullable = true;                                               ///< 如果 pass 结果未被使用，RenderGraph 是否允许裁剪该 pass。
+    bool hasSideEffect = false;                                         ///< true 表示 pass 有外部副作用，即使输出未被读取也不能裁剪。
+};
+
+struct RHIRenderGraphDesc {
+    std::vector<RHIRenderGraphBufferDesc> buffers;
+    std::vector<RHIRenderGraphTextureDesc> textures;
+    std::vector<RHIRenderGraphPassDesc> passes;
+};
+
+struct RHIFrameRenderSettings {
+    RHIExtent2D drawableSize{};
+    RHIViewport viewport{};
+    RHIRect2D scissor{};
+    u64 frameIndex = 0;
+    float deltaTimeSeconds = 0.0F;
+    u32 maxFrameInFlight = 2;
+    bool enableVsync = true;
+    bool enableHdr = false;
+};
+
+struct RHIFramePacket {
+    RHIFrameRenderSettings settings{};              ///< 当前帧设置。
+    RHISwapchainDesc swapchain{};                   ///< 当前帧目标 swapchain 需求。
+    RHIUploadBatchDesc upload{};                    ///< 本帧开始前需要执行的资源上传。
+    RHIRenderCameraSetDesc cameras{};               ///< 相机输入，和物体/光源解耦。
+    RHISceneEnviromentDesc enviroment{};            ///< 场景环境和后处理基础参数。
+    RHIRenderLightSetDesc lights{};                 ///< 光源输入，和物体/相机解耦。
+    RHIRenderObjectSetDesc objects{};               ///< 可渲染物体输入，和相机/光源解耦。
+    RHIRenderGraphDesc graph{};                     ///< pass 和资源依赖图。
+    std::vector<RHIRenderPassWorkload> workloads;   ///< 每个 pass 的具体 draw/dispatch 命令。
+    std::vector<RHIQueueSubmitDesc> submissions;    ///< 队列提交计划；为空时后端可按 graph 自动生成。
+    std::optional<RHIPresentDesc> present;          ///< 可选呈现请求，离屏渲染帧可以为空。
+};
+
+struct RHICapabilities {
+    RHIGraphicsAPI api = RHIGraphicsAPI::Unknown;
+    std::string adapterName;
+    u64 dedicatedVideoMemory = 0;
+    u64 sharedSystemMemory = 0;
+    RHIRenderFeature features = RHIRenderFeature::None;
+    u32 maxTexture2DSize = 0;
+    u32 maxTexture3DSize = 0;
+    u32 maxTextureCubeSize = 0;
+    u32 maxTextureArrayLayers = 0;
+    u32 maxColorAttachments = 0;
+    u32 maxBindSets = 0;
+    u32 maxBindingPerGroup = 0;
+    u32 maxVertexBuffers = 0;
+    u32 maxVertexAttributes = 0;
+    u32 maxPushConstantSize = 0;
+    u64 minUniformBufferOffsetAlignment = 0;
+    u64 minStorageBufferOffsetAlignment = 0;
+    u64 optionalBufferCopyOffsetAlignment = 0;
+    u64 optionalBufferCopyRowPitchAlignment = 0;
+    RHISampleCount maxSampleCount = RHISampleCount::Count1;
+    float maxSamplerAnisotropy = 1.0F;
+    b8 supportsCompute = false;
+    b8 supportsGeometryShader = false;
+    b8 supportsTessellation = false;
+    b8 supportsMeshShader = false;
+    b8 supportsRayTracing = false;
+    b8 supportsBindless = false;
+    b8 supportsSamplerAnisotropy = false;
+    b8 supportsSamplerCompare = false;
+    b8 supportsTimestampQuery = false;
+    b8 supportsOcclusionQuery = false;
+    b8 supportsPipelineStatisticsQuery = false;
+    b8 supportsIndirectDraw = false;
+    b8 supportsDrawIndirectCount = false;
+    b8 supportsDynamicRendering = false;
+    b8 supportsDebugMarker = false;
+    b8 supportsTextureCompressionBC = false;
+    b8 supportsTextureCompressionETC2 = false;
+    b8 supportsTextureCompressionASTC = false;
+};
+
 } // namespace RHI
