@@ -24,11 +24,12 @@ inline constexpr u64 RHI_WHOLE_SIZE = std::numeric_limits<u64>::max();
 template <typename Tag>
 struct RHIHandle {
     u64 value = RHI_INVALID_HANDLE_VALUE;
-    explicit RHIHandle() = default;
+    constexpr RHIHandle() noexcept = default;
+    explicit constexpr RHIHandle(u64 handleValue) noexcept : value(handleValue) {}
     [[nodiscard]] constexpr b8 IsValid() const noexcept { return value != RHI_INVALID_HANDLE_VALUE; }
     [[nodiscard]] explicit constexpr operator b8() const noexcept { return IsValid(); }
-    friend constexpr b8 operator==(RHIHandle lhs, RHIHandle rhs) { return lhs.value == rhs.value; }
-    friend constexpr b8 operator!=(RHIHandle lhs, RHIHandle rhs) { return lhs.value != rhs.value; }
+    friend constexpr b8 operator==(RHIHandle lhs, RHIHandle rhs) noexcept { return lhs.value == rhs.value; }
+    friend constexpr b8 operator!=(RHIHandle lhs, RHIHandle rhs) noexcept { return !(lhs == rhs); }
 };
 
 struct RHIBufferTag             {};
@@ -132,26 +133,26 @@ enum class RHIValidationMode : u8 {
 
 enum class RHIRenderFeature : u64 {
     None                        = 0,            ///< 不请求任何额外功能。
-    Compute                     = 1ull < 0,     ///< 启用 compute shader 和 compute queue/pass。
-    GeometryShader              = 1ull < 1,     ///< 启用 geometry shader 阶段。
-    Tessellation                = 1ull < 2,     ///< 启用 tessellation control/evaluation shader 阶段。
-    MeshShader                  = 1ull < 3,     ///< 启用 task/mesh shader 现代几何管线。
-    RayTracing                  = 1ull < 4,     ///< 启用硬件光追相关资源和 shader 阶段。
-    Bindless                    = 1ull < 5,     ///< 启用大规模资源数组和 shader 动态索引。
-    SamplerAnisotropy           = 1ull < 6,     ///< 启用各向异性纹理过滤。
-    SamplerCompare              = 1ull < 7,     ///< 启用比较采样器，常用于 shadow map。
-    TimestampQuery              = 1ull < 8,     ///< 启用 GPU timestamp 查询，用于性能计时。
-    OcclusionQuery              = 1ull < 9,     ///< 启用遮挡查询，用于可见性判断。
-    PipelineStatisticsQuery     = 1ull < 10,    ///< 启用管线统计查询，例如 shader 调用次数。
-    IndirectDraw                = 1ull < 11,    ///< 启用 GPU 参数驱动的 indirect draw/dispatch。
-    DrawIndirectCount           = 1ull < 12,    ///< 启用 GPU count buffer 控制 indirect draw 数量。
-    DynamicRendering            = 1ull < 13,    ///< 启用无传统 render pass/framebuffer 的动态渲染路径。
-    ConservativeRasterization   = 1ull < 14,    ///< 启用保守光栅化，常用于遮挡或体素化。
-    TextureCompressionBC        = 1ull < 15,    ///< 启用 BC/DXT 系列压缩纹理格式。
-    TextureCompressionETC2      = 1ull < 16,    ///< 启用 ETC2 压缩纹理格式，移动端常见。
-    TextureCompressionASTC      = 1ull < 17,    ///< 启用 ASTC 压缩纹理格式，移动端和现代 GPU 常见。
-    MultiView                   = 1ull < 18,    ///< 启用单次 pass 渲染多个 view，常用于 VR/立体渲染。
-    DebugMarkers                = 1ull < 19,    ///< 启用 GPU 调试标记和对象命名。
+    Compute                     = 1ull << 0,     ///< 启用 compute shader 和 compute queue/pass。
+    GeometryShader              = 1ull << 1,     ///< 启用 geometry shader 阶段。
+    Tessellation                = 1ull << 2,     ///< 启用 tessellation control/evaluation shader 阶段。
+    MeshShader                  = 1ull << 3,     ///< 启用 task/mesh shader 现代几何管线。
+    RayTracing                  = 1ull << 4,     ///< 启用硬件光追相关资源和 shader 阶段。
+    Bindless                    = 1ull << 5,     ///< 启用大规模资源数组和 shader 动态索引。
+    SamplerAnisotropy           = 1ull << 6,     ///< 启用各向异性纹理过滤。
+    SamplerCompare              = 1ull << 7,     ///< 启用比较采样器，常用于 shadow map。
+    TimestampQuery              = 1ull << 8,     ///< 启用 GPU timestamp 查询，用于性能计时。
+    OcclusionQuery              = 1ull << 9,     ///< 启用遮挡查询，用于可见性判断。
+    PipelineStatisticsQuery     = 1ull << 10,    ///< 启用管线统计查询，例如 shader 调用次数。
+    IndirectDraw                = 1ull << 11,    ///< 启用 GPU 参数驱动的 indirect draw/dispatch。
+    DrawIndirectCount           = 1ull << 12,    ///< 启用 GPU count buffer 控制 indirect draw 数量。
+    DynamicRendering            = 1ull << 13,    ///< 启用无传统 render pass/framebuffer 的动态渲染路径。
+    ConservativeRasterization   = 1ull << 14,    ///< 启用保守光栅化，常用于遮挡或体素化。
+    TextureCompressionBC        = 1ull << 15,    ///< 启用 BC/DXT 系列压缩纹理格式。
+    TextureCompressionETC2      = 1ull << 16,    ///< 启用 ETC2 压缩纹理格式，移动端常见。
+    TextureCompressionASTC      = 1ull << 17,    ///< 启用 ASTC 压缩纹理格式，移动端和现代 GPU 常见。
+    Multiview                   = 1ull << 18,    ///< 启用单次 pass 渲染多个 view，常用于 VR/立体渲染。
+    DebugMarkers                = 1ull << 19,    ///< 启用 GPU 调试标记和对象命名。
 };
 
 template <>
@@ -175,16 +176,16 @@ struct RHIBackendDesc {
     std::string engineName = "";                                                                            ///< 引擎名称，用于后端实例创建和调试器显示。
     RHIGraphicsAPI preferredApi = RHIGraphicsAPI::Vulkan;                                                   ///< 优先使用的图形 API。
     RHIPowerPreference powerPreference = RHIPowerPreference::HighPerformance;                               ///< GPU 选择偏好。
-    RHIValidationMode validationMode = RHIValidationMode::Enabled;                                          ///< 是否启用验证层/调试层。
+    RHIValidationMode validation = RHIValidationMode::Enabled;                                          ///< 是否启用验证层/调试层。
     RHIRenderFeature requiredFeatures = RHIRenderFeature::None;                                             ///< 必须支持的功能，不支持时初始化应失败。
     RHIRenderFeature optionalFeatures = RHIRenderFeature::DebugMarkers | RHIRenderFeature::TimestampQuery;  ///< 可选功能，后端尽量开启。
     u32 framesInFlight = 2;                                                                                 ///< CPU/GPU 并行帧数。
-    b8 enableGPUCrashDumps = false;                                                                       ///< 是否启用 GPU 崩溃转储，具体支持由后端决定。
+    b8 enableGpuCrashDumps = false;                                                                       ///< 是否启用 GPU 崩溃转储，具体支持由后端决定。
     b8 enablePipelineCache = true;                                                                        ///< 是否启用管线缓存。
 };
 
 struct RHIQueueDesc {
-    RHIQueueType queueType = RHIQueueType::Graphics;
+    RHIQueueType type = RHIQueueType::Graphics;
     u32 count = 1;
     f32 priority = 1.0F;
 };
@@ -213,8 +214,8 @@ enum class RHIFormat : u16 {
     RGBA8_UInt,
     RGBA8_SInt,
     RGBA8_SRGB,
-    BGRA_UNorm,
-    BGRA_SRGB,
+    BGRA8_UNorm,
+    BGRA8_SRGB,
 
     R16_UNorm,
     R16_SNorm,
@@ -260,7 +261,7 @@ enum class RHIFormat : u16 {
     BC3RGBA_UNorm,
     BC3RGBA_SRGB,
     BC5RG_UNorm,
-    BC5RG_SRGB,
+    BC5RG_SNorm,
     BC7RGBA_UNorm,
     BC7RGBA_SRGB,
 
@@ -346,7 +347,7 @@ enum class RHIPipelineStage : u64 {
     BottomOfPipe = 1ull << 13,
     Host = 1ull << 14,
     RayTracingShader = 1ull << 15,
-    AccelerationStrctureBuild = 1ull << 16,
+    AccelerationStructureBuild = 1ull << 16,
     TaskShader = 1ull << 17,
     MeshShader = 1ull << 18,
     AllGraphics = 1ull << 19,
@@ -675,12 +676,12 @@ struct RHITextureDesc {
     RHITextureDimension dimension = RHITextureDimension::Texture2D;
     RHIExtent3D extent{};
     u32 arrayLayers = 1;
-    u32 mipLevel = 1;
+    u32 mipLevels = 1;
     RHIFormat format = RHIFormat::RGBA8_UNorm;
     RHISampleCount samples = RHISampleCount::Count1;
     RHITextureUsage usage = RHITextureUsage::Sampled;
     RHITextureCreateFlags flags = RHITextureCreateFlags::None;
-    RHIResourceLifetime linetime = RHIResourceLifetime::Persistent;
+    RHIResourceLifetime lifetime = RHIResourceLifetime::Persistent;
     RHIResourceState initialState = RHIResourceState::Undefined;
 };
 
@@ -707,7 +708,7 @@ struct RHISamplerDesc {
     f32 mipLodBias = 0.0F;
     f32 minLod = 0.0F;
     f32 maxLod = std::numeric_limits<f32>::max();
-    b8 samplerAnisotropy = false;
+    b8 enableAnisotropy = false;
     f32 maxAnisotropy = 1.0F;
     b8 enableCompare = false;
     RHICompareOp compareOp = RHICompareOp::LessOrEqual;
@@ -780,7 +781,7 @@ struct RHIShaderDesc {
 };
 
 struct RHIShaderSpecializationConstant {
-    u32 contantId = 0;
+    u32 constantId = 0;
     std::vector<std::byte> data;
 };
 
@@ -843,7 +844,7 @@ struct RHIResourceBinding {
 struct RHIBindSetDesc {
     std::string debugName;
     RHIBindSetLayout layout{};
-    std::vector<RHIResourceBinding> binding;
+    std::vector<RHIResourceBinding> bindings;
 };
 
 struct RHIPushConstantRange {
@@ -855,7 +856,7 @@ struct RHIPushConstantRange {
 struct RHIPipelineLayoutDesc {
     std::string debugName;
     std::vector<RHIBindSetLayout> bindSetLayouts;
-    std::vector<RHIPushConstantRange> pushConstant;
+    std::vector<RHIPushConstantRange> pushConstants;
 };
 
 struct RHIShaderResourceReflection {
@@ -1102,12 +1103,12 @@ struct RHIColorBlendAttachmentState {
     RHIBlendOp colorOp = RHIBlendOp::Add;
     RHIBlendFactor sourceAlpha = RHIBlendFactor::One;
     RHIBlendFactor destinationAlpha = RHIBlendFactor::Zero;
-    RHIBlendOp blendOp = RHIBlendOp::Add;
+    RHIBlendOp alphaOp = RHIBlendOp::Add;
     RHIColorWriteMask writeMask = RHIColorWriteMask::All;
 };
 
 struct RHIBlendState {
-    b8 loginOpEnable = false;
+    b8 logicOpEnable = false;
     RHILogicOp logicOp = RHILogicOp::Copy;
     std::array<f32, 4> blendConstants{0.0F, 0.0F, 0.0F, 0.0F};
     std::vector<RHIColorBlendAttachmentState> attachments;
@@ -1142,7 +1143,7 @@ struct RHIComputePipelineDesc {
 
 struct RHIPipelineCacheDesc {
     std::string debugName;
-    std::vector<std::byte> initailData;
+    std::vector<std::byte> initialData;
     b8 allowSerialization = true;
 };
 
@@ -1254,7 +1255,7 @@ struct RHIFrameBufferDesc {
 enum class RHIColorSpace : u8 {
     SRGBNonlinear,      ///< 标准 sRGB 非线性色彩空间，普通 SDR swapchain 默认选择。
     DisplayP3Nonlinear, ///< Display P3 非线性色彩空间，适合广色域 SDR 输出。
-    ExtendSGBLinear,    ///< 扩展 sRGB 线性色彩空间，适合宽范围线性颜色输出。
+    ExtendedSRGBLinear,    ///< 扩展 sRGB 线性色彩空间，适合宽范围线性颜色输出。
     HDR10ST2084,        ///< HDR10 PQ/ST2084 色彩空间，适合 HDR10 显示链路。
     HDR10HLG            ///< HDR HLG 色彩空间，适合广播或 HLG HDR 输出。
 };
@@ -1264,10 +1265,10 @@ enum class RHISurfaceTransform : u8 {
     Rotate90,
     Rotate180,
     Rotate270,
-    HorizontalMirrored,
-    HorizontalMirroredRotate90,
-    HorizontalMirroredRotate180,
-    HorizontalMirroredRotate270,
+    HorizontalMirror,
+    HorizontalMirrorRotate90,
+    HorizontalMirrorRotate180,
+    HorizontalMirrorRotate270,
     Inherit
 };
 
@@ -1281,7 +1282,7 @@ enum class RHICompositeAlphaMode : u8 {
 struct RHISwapchainDesc {
     std::string debugName;
     RHIExtent2D extent{};
-    RHIFormat preferredFormat = RHIFormat::BGRA_SRGB;
+    RHIFormat preferredFormat = RHIFormat::BGRA8_SRGB;
     RHIColorSpace colorSpace = RHIColorSpace::SRGBNonlinear;
     RHIPresentMode presentMode = RHIPresentMode::FIFO;
     u32 imageCount = 2;
@@ -1293,18 +1294,18 @@ struct RHISwapchainDesc {
 };
 
 struct RHITextureSubresourceRange {
-    RHITextureAspect asect = RHITextureAspect::All;
+    RHITextureAspect aspect = RHITextureAspect::All;
     u32 baseMipLevel = 0;
     u32 mipLevelCount = 1;
     u32 baseArrayLayer = 0;
-    u32 arrayLayersCount = 1;
+    u32 arrayLayerCount = 1;
 };
 
 struct RHIGlobalBarrier {
-    RHIPipelineStage sourceStage = RHIPipelineStage::AllCommands;
-    RHIPipelineStage destinationStage = RHIPipelineStage::AllCommands;
-    RHIAccessFlags sourceFlags = RHIAccessFlags::MemoryWrite;
-    RHIAccessFlags destinationFlags = RHIAccessFlags::MemoryRead;
+    RHIPipelineStage sourceStages = RHIPipelineStage::AllCommands;
+    RHIPipelineStage destinationStages = RHIPipelineStage::AllCommands;
+    RHIAccessFlags sourceAccess = RHIAccessFlags::MemoryWrite;
+    RHIAccessFlags destinationAccess = RHIAccessFlags::MemoryRead;
 };
 
 struct RHITextureBarrier {
@@ -1352,7 +1353,7 @@ struct RHITextureUploadDesc {
     u32 mipLevel = 0;
     u32 arrayLayer = 0;
     RHIOffset3D offset{};
-    RHIOffset3D extent{};
+    RHIExtent3D extent{};
     u64 bytesPerRow = 0;
     u64 rowsPerImage = 0;
     std::vector<std::byte> data;
@@ -1454,8 +1455,8 @@ struct RHISubmeshDesc {
 
 struct RHIMeshDesc {
     std::string debugName;
-    std::vector<RHIVertexStream> vertexStream;
-    std::vector<RHIIndexStream> indexStream;
+    std::vector<RHIVertexStream> vertexStreams;
+    std::optional<RHIIndexStream> indexStream;
     std::vector<RHISubmeshDesc> submeshes;
 };
 
@@ -1493,7 +1494,7 @@ struct RHIMaterialDesc {
 struct RHIDrawCommand {
     RHIPipeline pipeline{};
     std::vector<RHIBindSet> bindSets;
-    std::vector<RHIVertexStream> vertexStream;
+    std::vector<RHIVertexStream> vertexStreams;
     u32 vertexCount = 0;
     u32 instanceCount = 0;
     u32 firstVertex = 0;
@@ -1503,11 +1504,11 @@ struct RHIDrawCommand {
 struct RHIDrawIndexedCommand {
     RHIPipeline pipeline{};
     std::vector<RHIBindSet> bindSets;
-    std::vector<RHIVertexStream> vertexStream;
+    std::vector<RHIVertexStream> vertexStreams;
     RHIIndexStream indexStream{};
-    u32 vertexCount = 0;
-    u32 instanceCount = 0;
-    u32 firstVertex = 0;
+    u32 indexCount = 0;
+    u32 instanceCount = 1;
+    u32 firstIndex = 0;
     i32 vertexOffsetElements = 0;
     u32 firstInstance = 0;
 };
@@ -1523,7 +1524,7 @@ struct RHIDispatchCommand {
 struct RHIDrawIndirectCommand {
     RHIPipeline pipeline{};
     std::vector<RHIBindSet> bindSets;
-    std::vector<RHIVertexStream> vertexStream;
+    std::vector<RHIVertexStream> vertexStreams;
     RHIBuffer argumentBuffer{};
     u64 argumentOffset = 0;
     u32 drawCount = 1;
@@ -1535,9 +1536,9 @@ struct RHIDrawIndirectCommand {
 struct RHIDrawIndexedIndirectCommand {
     RHIPipeline pipeline{};
     std::vector<RHIBindSet> bindSets;
-    std::vector<RHIVertexStream> vertexStream;
+    std::vector<RHIVertexStream> vertexStreams;
     RHIIndexStream indexStream{};
-    RHIBuffer argementBuffer{};
+    RHIBuffer argumentBuffer{};
     u64 argumentOffset = 0;
     u32 drawCount = 1;
     u32 stride = 0;
@@ -1696,16 +1697,16 @@ struct RHIRenderObjectDesc {
     RHITransformData transform{};
     u32 submeshIndex = 0;
     RHIRenderQueue queue = RHIRenderQueue::Opaque;
-    u64 soringKey = 0;
+    u64 sortingKey = 0;
     u32 layerMask = 0xFFFFFFFFu;
     RHIBoundingBox worldBounds{};
     RHIBoundingSphere worldBoundsSphere{};
     bool visible = true;
-    bool castShadow = true;
-    bool receiveShadow = true;
+    bool castsShadow = true;
+    bool receivesShadow = true;
 };
 
-struct RHISceneEnviromentDesc {
+struct RHISceneEnvironmentDesc {
     float3 ambientColor{0.03F};                     ///< 简单环境光颜色。
     float exposure = 1.0F;                          ///< 曝光倍率。
     RHITextureView skyTexture{};                    ///< 可选天空贴图。
@@ -1804,7 +1805,7 @@ struct RHIRenderGraphPassDesc {
     std::string name;                                                   ///< pass 名称，需和 RHIRenderPassWorkload::passName 对应。
     RHIRenderGraphPassType type = RHIRenderGraphPassType::Raster;       ///< pass 类型。
     RHIQueueType queue = RHIQueueType::Graphics;                        ///< pass 希望运行在哪类队列。
-    std::vector<std::string> dependOnPasses;                            ///< 仅用于无法从资源读写推导的显式先决 pass；通常应优先声明资源依赖。
+    std::vector<std::string> dependsOnPasses;                            ///< 仅用于无法从资源读写推导的显式先决 pass；通常应优先声明资源依赖。
     std::vector<RHIRenderGraphResourceRef> reads;                       ///< pass 读取的资源及访问状态。
     std::vector<RHIRenderGraphResourceRef> writes;                      ///< pass 写入的资源及访问状态。
     std::vector<RHIRenderGraphAttachmentDesc> colorAttachments;         ///< color attachments。
@@ -1836,7 +1837,7 @@ struct RHIFramePacket {
     RHISwapchainDesc swapchain{};                   ///< 当前帧目标 swapchain 需求。
     RHIUploadBatchDesc upload{};                    ///< 本帧开始前需要执行的资源上传。
     RHIRenderCameraSetDesc cameras{};               ///< 相机输入，和物体/光源解耦。
-    RHISceneEnviromentDesc enviroment{};            ///< 场景环境和后处理基础参数。
+    RHISceneEnvironmentDesc environment{};            ///< 场景环境和后处理基础参数。
     RHIRenderLightSetDesc lights{};                 ///< 光源输入，和物体/相机解耦。
     RHIRenderObjectSetDesc objects{};               ///< 可渲染物体输入，和相机/光源解耦。
     RHIRenderGraphDesc graph{};                     ///< pass 和资源依赖图。
@@ -1857,14 +1858,14 @@ struct RHICapabilities {
     u32 maxTextureArrayLayers = 0;
     u32 maxColorAttachments = 0;
     u32 maxBindSets = 0;
-    u32 maxBindingPerGroup = 0;
+    u32 maxBindingsPerGroup = 0;
     u32 maxVertexBuffers = 0;
     u32 maxVertexAttributes = 0;
     u32 maxPushConstantSize = 0;
     u64 minUniformBufferOffsetAlignment = 0;
     u64 minStorageBufferOffsetAlignment = 0;
-    u64 optionalBufferCopyOffsetAlignment = 0;
-    u64 optionalBufferCopyRowPitchAlignment = 0;
+    u64 optimalBufferCopyOffsetAlignment = 0;
+    u64 optimalBufferCopyRowPitchAlignment = 0;
     RHISampleCount maxSampleCount = RHISampleCount::Count1;
     float maxSamplerAnisotropy = 1.0F;
     b8 supportsCompute = false;
@@ -1881,7 +1882,7 @@ struct RHICapabilities {
     b8 supportsIndirectDraw = false;
     b8 supportsDrawIndirectCount = false;
     b8 supportsDynamicRendering = false;
-    b8 supportsDebugMarker = false;
+    b8 supportsDebugMarkers = false;
     b8 supportsTextureCompressionBC = false;
     b8 supportsTextureCompressionETC2 = false;
     b8 supportsTextureCompressionASTC = false;
