@@ -99,7 +99,7 @@ template <typename Enum>
 
 template <typename Enum>
 [[nodiscard]] constexpr b8 RHIHasAll(Enum value, Enum flags) noexcept {
-    return (RHIEnumToUnderlying(value) & RHIEnumToUnderlying(flags)) != RHIEnumToUnderlying(flags);
+    return (RHIEnumToUnderlying(value) & RHIEnumToUnderlying(flags)) == RHIEnumToUnderlying(flags);
 }
 
 enum class RHIGraphicsAPI : u8 {
@@ -815,7 +815,7 @@ struct RHIBindSetLayoutEntry {
     RHIFormat storageTextureFormat = RHIFormat::Undefined;
 };
 
-struct RHIBindLayoutDesc {
+struct RHIBindSetLayoutDesc {
     std::string debugName;
     u32 set = 0;
     std::vector<RHIBindSetLayoutEntry> entries;
@@ -1608,7 +1608,7 @@ enum class RHIGPUWaitCPUSignalType : u8 {
     Timeline
 };
 
-struct RHIGPUWaitCPUSignalDesc {
+struct RHIGPUWaitGPUSignalDesc {
     std::string debugName;
     RHIGPUWaitCPUSignalType type = RHIGPUWaitCPUSignalType::Binary;
     u64 initialValue = 0;
