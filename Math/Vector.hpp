@@ -529,7 +529,7 @@ inline detail::FloatingResult<T> Length(const Vector<T, N>& value) noexcept {
     return std::sqrt(static_cast<Result>(LengthSquared(value)));
 }
 
-EXCALIBUR_FORCE_INLINE constexpr float Length(const Vector<float, 3>& value) noexcept {
+EXCALIBUR_FORCE_INLINE float Length(const Vector<float, 3>& value) noexcept {
     return std::sqrt(value.x * value.x + value.y * value.y + value.z * value.z);
 }
 

@@ -30,14 +30,14 @@ struct Quaternion {
     constexpr Quaternion(T xValue, T yValue, T zValue, T wValue) noexcept : x(xValue), y(yValue), z(zValue), w(wValue) {}
     explicit constexpr Quaternion(const Vector<T, 4>& vector) noexcept : x(vector.x), y(vector.y), z(vector.z), w(vector.w) {}
     template <FloatingScalar U>
-    explicit constexpr Quaternion(const Quaternion<U> other) noexcept 
-        : 
+    explicit constexpr Quaternion(const Quaternion<U> other) noexcept
+        :
         x(static_cast<T>(other.x)),
-        y(static_cast<T>(other.y)), 
-        z(static_cast<T>(other.z)), 
-        w(static_cast<T>(other.z)) {}
+        y(static_cast<T>(other.y)),
+        z(static_cast<T>(other.z)),
+        w(static_cast<T>(other.w)) {}
 
-    static constexpr Identity() noexcept {
+    static constexpr Quaternion Identity() noexcept {
         return {};
     }
 

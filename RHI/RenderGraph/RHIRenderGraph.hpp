@@ -45,7 +45,7 @@ struct RHICompiledRenderGraphPass {
     std::vector<u32> dependencies;
     std::vector<RHIRenderGraphTransition> transitions;
     std::vector<RHICompiledRenderGraphAttachment> colorAttachments;
-    std::optional<RHICompiledRenderGraphAttachment> depthStencilAttachments;
+    std::optional<RHICompiledRenderGraphAttachment> depthStencilAttachment;
 };
 
 struct RHIRenderGraphResourceLifetime {

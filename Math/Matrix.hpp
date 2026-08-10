@@ -17,8 +17,8 @@ namespace Math
     requires(R >= 2 && R <= 4 && C >= 2 && C <= 4)
     struct Matrix {
         using ValueType = T;
-        static constexpr std::size_t Row = R;
-        static constexpr std::size_t Column = C;
+        static constexpr std::size_t Rows = R;
+        static constexpr std::size_t Columns = C;
         std::array<Vector<T, C>, R> rows{};
 
         constexpr Matrix() noexcept = default;
@@ -35,8 +35,8 @@ namespace Math
         requires(sizeof...(Values) == R * C && (std::convertible_to<Values, T> && ...))
         explicit constexpr Matrix(Values... values) noexcept {
             std::array<T, R * C> flattend{static_cast<T>(values)...};
-            for (std::size_t row = 0; row < Row; ++row) {
-                for (std::size_t column = 0; column < Column; ++column) {
+            for (std::size_t row = 0; row < Rows; ++row) {
+                for (std::size_t column = 0; column < Columns; ++column) {
                     rows[row][column] = flattend[row * C + column];
                 }
             }
@@ -74,7 +74,7 @@ namespace Math
         }
 
         constexpr void SetColumn(std::size_t column, const Vector<T, R>& value) noexcept {
-            assert(column < Column);
+            assert(column < Columns);
             for (std::size_t row = 0; row < R; ++row) {
                 rows[row][column] = value[row];
             }
@@ -247,7 +247,7 @@ template <ArithmeticScalar T, ArithmeticScalar U, std::size_t R, std::size_t C>
 constexpr auto operator*(const Matrix<T, R, C>& matrix, U scalar) noexcept {
     using Result = std::common_type_t<T, U>;
     Matrix<Result, R, C> output{};
-    for (std::size_t row = 0; row < R, ++row) {
+    for (std::size_t row = 0; row < R; ++row) {
         output[row] = matrix[row] * scalar;
     }
     return output;
@@ -262,7 +262,7 @@ template <ArithmeticScalar T, ArithmeticScalar U, std::size_t R, std::size_t C>
 constexpr auto operator/(const Matrix<T, R, C>& matrix, U scalar) noexcept {
     using Result = std::common_type_t<T, U>;
     Matrix<Result, R, C> output{};
-    for (std::size_t row = 0; row < R, ++row) {
+    for (std::size_t row = 0; row < R; ++row) {
         output[row] = matrix[row] / scalar;
     }
     return output;
@@ -270,7 +270,7 @@ constexpr auto operator/(const Matrix<T, R, C>& matrix, U scalar) noexcept {
 
 template <ArithmeticScalar T, ArithmeticScalar U, std::size_t R, std::size_t C>
 constexpr Matrix<T, R, C> operator+=(Matrix<T, R, C>& lhs, const Matrix<U, R, C> rhs) noexcept {
-    for (std::size_t row = 0; row < R, ++row) {
+    for (std::size_t row = 0; row < R; ++row) {
         lhs[row] += rhs[row];
     }
     return lhs;
@@ -278,7 +278,7 @@ constexpr Matrix<T, R, C> operator+=(Matrix<T, R, C>& lhs, const Matrix<U, R, C>
 
 template <ArithmeticScalar T, ArithmeticScalar U, std::size_t R, std::size_t C>
 constexpr Matrix<T, R, C> operator-=(Matrix<T, R, C>& lhs, const Matrix<U, R, C> rhs) noexcept {
-    for (std::size_t row = 0; row < R, ++row) {
+    for (std::size_t row = 0; row < R; ++row) {
         lhs[row] -= rhs[row];
     }
     return lhs;
@@ -286,7 +286,7 @@ constexpr Matrix<T, R, C> operator-=(Matrix<T, R, C>& lhs, const Matrix<U, R, C>
 
 template <ArithmeticScalar T, ArithmeticScalar U, std::size_t R, std::size_t C>
 constexpr Matrix<T, R, C> operator*=(const Matrix<T, R, C>& lhs, U scalar) noexcept {
-    for (std::size_t row = 0; row < R, ++row) {
+    for (std::size_t row = 0; row < R; ++row) {
         lhs[row] *= scalar;
     }
     return lhs;
@@ -294,7 +294,7 @@ constexpr Matrix<T, R, C> operator*=(const Matrix<T, R, C>& lhs, U scalar) noexc
 
 template <ArithmeticScalar T, ArithmeticScalar U, std::size_t R, std::size_t C>
 constexpr Matrix<T, R, C> operator/=(const Matrix<T, R, C>& lhs, U scalar) noexcept {
-    for (std::size_t row = 0; row < R, ++row) {
+    for (std::size_t row = 0; row < R; ++row) {
         lhs[row] /= scalar;
     }
     return lhs;

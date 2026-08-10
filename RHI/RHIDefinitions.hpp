@@ -1597,8 +1597,8 @@ struct RHIRenderPassWorkload {
     std::vector<RHIResolveQueryCommand> queryResolves;
     std::vector<RHIDrawCommand> draws;
     std::vector<RHIDrawIndexedCommand> indexedDraws;
-    std::vector<RHIDrawIndirectCommand> indirectCommands;
-    std::vector<RHIDrawIndexedIndirectCommand> indexedIndirectCommands;
+    std::vector<RHIDrawIndirectCommand> indirectDraws;
+    std::vector<RHIDrawIndexedIndirectCommand> indexedIndirectDraws;
     std::vector<RHIDispatchCommand> dispatches;
     std::vector<RHIDispatchIndirectCommand> indirectDispatches;
 };

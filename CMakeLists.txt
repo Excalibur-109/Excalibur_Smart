@@ -18,3 +18,23 @@ target_sources(Math INTERFACE
 )
 target_include_directories(Math INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(Math INTERFACE cxx_std_20)
+
+# ---- Vulkan (RHIVulkan.hpp 与 RHI 公共头文件依赖 vulkan/vulkan.h) ----
+find_package(Vulkan REQUIRED)
+
+# ---- RHI ----
+add_library(RHI STATIC
+    RHI/RHIDefinitions.cpp
+    RHI/RHIDefinitions.hpp
+    RHI/Device/RHIDevice.cpp
+    RHI/Device/RHIDevice.hpp
+    RHI/Device/RHIDeviceDesc.hpp
+    RHI/Device/RHIDeviceFactory.cpp
+    RHI/Device/RHIDeviceFactory.hpp
+    RHI/RenderGraph/RHIRenderGraph.cpp
+    RHI/RenderGraph/RHIRenderGraph.hpp
+    RHI/Vulkan/RHIVulkan.hpp
+)
+target_include_directories(RHI PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(RHI PUBLIC Math Vulkan::Vulkan)
+target_compile_features(RHI PUBLIC cxx_std_20)
