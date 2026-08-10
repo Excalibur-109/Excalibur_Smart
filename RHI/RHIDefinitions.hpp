@@ -954,8 +954,8 @@ enum class RHICullMode : u8 {
 };
 
 enum class RHIFrontFace : u8 {
-    CounterClockWise,
-    ClockWise
+    CounterClockwise,
+    Clockwise
 };
 
 enum class RHIStencilOp : u8 {
@@ -966,7 +966,7 @@ enum class RHIStencilOp : u8 {
     DecrementClamp,             ///< stencil 值减 1，并在 0 处饱和。
     Invert,                     ///< 按位反转 stencil 值。
     IncrementWrap,              ///< stencil 值加 1，超过最大值后回绕到 0。
-    DecrementWarp               ///< stencil 值减 1，低于 0 后回绕到最大值。
+    DecrementWrap               ///< stencil 值减 1，低于 0 后回绕到最大值。
 };
 
 enum class RHIBlendFactor : u8 {
@@ -1056,7 +1056,7 @@ struct RHIInputAssemblyState {
 struct RHIRasterState {
     RHIPolygonMode polygonMode = RHIPolygonMode::Fill;
     RHICullMode cullMode = RHICullMode::Back;
-    RHIFrontFace frontFace = RHIFrontFace::CounterClockWise;
+    RHIFrontFace frontFace = RHIFrontFace::CounterClockwise;
     b8 depthClampEnable = false;
     b8 depthBiasEnable = false;
     f32 depthBiasConstantFactor = 0.0F;
@@ -1274,7 +1274,7 @@ enum class RHISurfaceTransform : u8 {
 
 enum class RHICompositeAlphaMode : u8 {
     Opaque,
-    Premultiplied,
+    PreMultiplied,
     PostMultiplied,
     Inherit
 };
