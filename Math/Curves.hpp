@@ -507,18 +507,18 @@ constexpr T EaseLinear(T amount) noexcept {
 template <FloatingScalar T>
 inline T EaseInSine(T amount) noexcept {
     amount = Saturate(amount);
-    return static_cast<T>(1) - std::cos(amount * HalfPi<T>);
+    return static_cast<T>(1) - std::cos(amount * HalfPI<T>);
 }
 
 template <FloatingScalar T>
 inline T EaseOutSine(T amount) noexcept {
-    return std::sin(Saturate(amount) * HalfPi<T>);
+    return std::sin(Saturate(amount) * HalfPI<T>);
 }
 
 template <FloatingScalar T>
 inline T EaseInOutSine(T amount) noexcept {
     amount = Saturate(amount);
-    return -(std::cos(Pi<T> * amount) - static_cast<T>(1)) * static_cast<T>(0.5);
+    return -(std::cos(PI<T> * amount) - static_cast<T>(1)) * static_cast<T>(0.5);
 }
 
 template <FloatingScalar T>
@@ -656,7 +656,7 @@ inline T EaseInElastic(T amount) noexcept {
     if (amount == static_cast<T>(0) || amount == static_cast<T>(1)) {
         return amount;
     }
-    const T phase = TwoPi<T> / static_cast<T>(3);
+    const T phase = TwoPI<T> / static_cast<T>(3);
     return -std::pow(static_cast<T>(2), static_cast<T>(10) * amount - static_cast<T>(10)) *
            std::sin((amount * static_cast<T>(10) - static_cast<T>(10.75)) * phase);
 }
@@ -667,7 +667,7 @@ inline T EaseOutElastic(T amount) noexcept {
     if (amount == static_cast<T>(0) || amount == static_cast<T>(1)) {
         return amount;
     }
-    const T phase = TwoPi<T> / static_cast<T>(3);
+    const T phase = TwoPI<T> / static_cast<T>(3);
     return std::pow(static_cast<T>(2), -static_cast<T>(10) * amount) *
                std::sin((amount * static_cast<T>(10) - static_cast<T>(0.75)) * phase) +
            static_cast<T>(1);
@@ -679,7 +679,7 @@ inline T EaseInOutElastic(T amount) noexcept {
     if (amount == static_cast<T>(0) || amount == static_cast<T>(1)) {
         return amount;
     }
-    const T phase = TwoPi<T> / static_cast<T>(4.5);
+    const T phase = TwoPI<T> / static_cast<T>(4.5);
     return amount < static_cast<T>(0.5)
                ? -std::pow(static_cast<T>(2), static_cast<T>(20) * amount - static_cast<T>(10)) *
                      std::sin((static_cast<T>(20) * amount - static_cast<T>(11.125)) * phase) *

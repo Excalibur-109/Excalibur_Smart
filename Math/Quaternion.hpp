@@ -41,7 +41,7 @@ struct Quaternion {
         return {};
     }
 
-    constexpr Vector<T, 4> xyzw() noexcept {
+    constexpr Vector<T, 4> xyzw() const noexcept {
         return {x, y, z, w};
     }
 };
@@ -367,11 +367,11 @@ inline Vector<T, 3> QuaternionToEulerXYZ(const Quaternion<T>& value) noexcept {
     T pitch;
     T yaw;
     if (sinPitch >= threshold) {
-        pitch = HalfPi<T>; // +90°
+        pitch = HalfPI<T>; // +90°
         yaw = std::atan2(m[1][2], m[1][1]);
         roll = static_cast<T>(0);
     } else if (sinPitch <= -threshold) {
-        pitch = -HalfPi<T>; // -90°
+        pitch = -HalfPI<T>; // -90°
         yaw = std::atan2(-m[1][2], m[1][1]);
         roll = static_cast<T>(0);
     } else {

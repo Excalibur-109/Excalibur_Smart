@@ -11,7 +11,7 @@
 
 #include "Functions.hpp"
 
-#include <cMath>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 

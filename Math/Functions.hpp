@@ -130,12 +130,12 @@ inline Vector<T, N> Mod(const Vector<T, N>& value, const Vector<T, N>& divisor) 
 
 template <FloatingScalar T, std::size_t N>
 constexpr Vector<T, N> Radians(const Vector<T, N>& degrees) noexcept {
-    return degrees * (Pi<T> / static_cast<T>(180));
+    return degrees * (PI<T> / static_cast<T>(180));
 }
 
 template <FloatingScalar T, std::size_t N>
 constexpr Vector<T, N> Degrees(const Vector<T, N>& radians) noexcept {
-    return radians * (static_cast<T>(180) / Pi<T>);
+    return radians * (static_cast<T>(180) / PI<T>);
 }
 
 template <ArithmeticScalar T, std::size_t N>

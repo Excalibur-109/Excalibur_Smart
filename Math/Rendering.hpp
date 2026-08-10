@@ -149,7 +149,7 @@ inline Vector<T, 3> TransformNormal(const Matrix<T, 4, 4>& localToWorld, const V
 template <FloatingScalar T>
 constexpr Vector<T, 3> LambertDiffuse(const Vector<T, 3>& albedo) noexcept {
     // Lambert BRDF=f_d=albedo/pi。后续还需乘 NdotL；除以 pi 用于满足能量守恒。
-    return albedo * InvPi<T>;
+    return albedo * InvPI<T>;
 }
 
 template <FloatingScalar T>
@@ -182,7 +182,7 @@ constexpr T DistributionGGX(T normalDotHalf, T roughness) noexcept {
     const T denominator = nDotH * nDotH * (alphaSquared - static_cast<T>(1)) +
                           static_cast<T>(1);
     return alphaSquared /
-           Max(Pi<T> * denominator * denominator, std::numeric_limits<T>::epsilon());
+           Max(PI<T> * denominator * denominator, std::numeric_limits<T>::epsilon());
 }
 
 /// Schlick-GGX 几何遮蔽项。directLighting=true 使用直接光 k，false 使用 IBL k。
@@ -482,7 +482,7 @@ template <FloatingScalar T>
 inline Vector<T, 3> CosineSampleHemisphere(const Vector<T, 2>& sample) noexcept {
     // 把单位方形样本映射到半球，PDF=cos(theta)/pi，返回局部空间 +Z 半球方向。
     const T radius = std::sqrt(Saturate(sample.x));
-    const T angle = TwoPi<T> * sample.y;
+    const T angle = TwoPI<T> * sample.y;
     const T x = radius * std::cos(angle);
     const T y = radius * std::sin(angle);
     return {x, y, std::sqrt(Max(static_cast<T>(0), static_cast<T>(1) - x * x - y * y))};
@@ -492,7 +492,7 @@ template <FloatingScalar T>
 inline Vector<T, 3> ImportanceSampleGGX(const Vector<T, 2>& sample, T roughness, const Vector<T, 3>& normal) noexcept {
     // 按 GGX NDF 的高概率区域采样半程向量，可用于预过滤环境贴图和 split-sum IBL。
     const T alpha = Max(roughness * roughness, static_cast<T>(0.001));
-    const T phi = TwoPi<T> * sample.x;
+    const T phi = TwoPI<T> * sample.x;
     const T cosineTheta = std::sqrt(
         (static_cast<T>(1) - sample.y) /
         (static_cast<T>(1) + (alpha * alpha - static_cast<T>(1)) * sample.y));

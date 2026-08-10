@@ -20,6 +20,11 @@ target_include_directories(Math INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(Math INTERFACE cxx_std_20)
 
 # ---- Vulkan (RHIVulkan.hpp 与 RHI 公共头文件依赖 vulkan/vulkan.h) ----
+enable_testing()
+add_executable(MathTests test_math.cpp)
+target_link_libraries(MathTests PRIVATE Math)
+add_test(NAME MathTests COMMAND MathTests)
+
 find_package(Vulkan REQUIRED)
 
 # ---- RHI ----
