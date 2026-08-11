@@ -15,7 +15,7 @@ namespace RHI {
 struct RHIVulkanSurfaceDesc {
     VkSurfaceKHR surface = VK_NULL_HANDLE;
     std::function<VkSurfaceKHR(VkInstance)> createSurface;
-    bool ownsSurface = false;
+    b8 ownsSurface = false;
 };
 
 struct RHIVulkanDesc {
@@ -52,9 +52,9 @@ class RHIVulkan {
     RHIVulkan(RHIVulkan&&) noexcept;
     RHIVulkan& operator=(RHIVulkan&&) noexcept;
 
-    [[nodiscard]] bool Initialize(const RHIVulkanDesc& desc, std::string* errorMessage = nullptr);
+    [[nodiscard]] b8 Initialize(const RHIVulkanDesc& desc, std::string* errorMessage = nullptr);
     void Shutdown() noexcept;
-    [[nodiscard]] bool IsInitialized() const noexcept;
+    [[nodiscard]] b8 IsInitialized() const noexcept;
     [[nodiscard]] const RHICapabilities& Capabilities() const noexcept;
     [[nodiscard]] const RHIVulkanNativeHandles& NativeHandles() const noexcept;
     [[nodiscard]] RHIBuffer CreateBuffer(const RHIBufferDesc& desc);
@@ -76,11 +76,11 @@ class RHIVulkan {
     [[nodiscard]] std::vector<RHITextureView> GetSwapchainImageViews(RHISwapchain handle) const;
     [[nodiscard]] RHIFormat GetSwapchainFormat(RHISwapchain handle) const;
     [[nodiscard]] RHIExtent2D GetSwapchainExtent(RHISwapchain handle) const;
-    [[nodiscard]] bool AcquireNextImage(RHISwapchain swapchain, RHIGPUWaitGPUSignal gpuWaitGPUSignal, RHICPUWaitGPUSignal cpuWaitGPUSignal, u32* imageIndex, std::string* errorMessage = nullptr);
-    [[nodiscard]] bool Submit(const RHIQueueSubmitDesc& desc, std::string* errorMessage = nullptr);
-    [[nodiscard]] bool Present(const RHIPresentDesc& desc, std::string* errorMessage = nullptr);
-    [[nodiscard]] bool SubmitFrame(const RHIFramePacket& packet, std::string* errorMessage = nullptr);
-    [[nodiscard]] bool SubmitFrame(const RHIFramePacket& packet, const RHIRenderGraphExecutionPlan& graphPlan, std::string* errorMessage = nullptr);
+    [[nodiscard]] b8 AcquireNextImage(RHISwapchain swapchain, RHIGPUWaitGPUSignal gpuWaitGPUSignal, RHICPUWaitGPUSignal cpuWaitGPUSignal, u32* imageIndex, std::string* errorMessage = nullptr);
+    [[nodiscard]] b8 Submit(const RHIQueueSubmitDesc& desc, std::string* errorMessage = nullptr);
+    [[nodiscard]] b8 Present(const RHIPresentDesc& desc, std::string* errorMessage = nullptr);
+    [[nodiscard]] b8 SubmitFrame(const RHIFramePacket& packet, std::string* errorMessage = nullptr);
+    [[nodiscard]] b8 SubmitFrame(const RHIFramePacket& packet, const RHIRenderGraphExecutionPlan& graphPlan, std::string* errorMessage = nullptr);
     void WaitIdle() const noexcept;
 
     void Destroy(RHIBuffer handle) noexcept;
@@ -99,7 +99,7 @@ class RHIVulkan {
     void Destroy(RHISwapchain handle) noexcept;
 
 private:
-    [[nodiscard]] bool RecordAndSubmitFrame(const RHIFramePacket& packet, const RHIRenderGraphExecutionPlan& graphPlan, std::string* errorMessage);
+    [[nodiscard]] b8 RecordAndSubmitFrame(const RHIFramePacket& packet, const RHIRenderGraphExecutionPlan& graphPlan, std::string* errorMessage);
 
     struct Impl;
     std::unique_ptr<Impl> impl_;
