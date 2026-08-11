@@ -9,15 +9,30 @@ project(
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_library(Math INTERFACE)
 target_sources(Math INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/Math.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Math/Math.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Math/Color.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Math/Curves.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Math/Definitions.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Math/Functions.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Math/Matrix.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Math/Quaternion.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Math/Random.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Math/Rendering.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Math/Scalar.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Math/Vector.hpp
 )
 target_include_directories(Math INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(Math INTERFACE cxx_std_20)
+target_compile_options(Math INTERFACE
+    $<$<CXX_COMPILER_ID:MSVC>:/permissive->
+    $<$<CXX_COMPILER_ID:MSVC>:/Zc:__cplusplus>
+    $<$<CXX_COMPILER_ID:MSVC>:/utf-8>
+)
 
 # ---- Vulkan (RHIVulkan.hpp 与 RHI 公共头文件依赖 vulkan/vulkan.h) ----
 enable_testing()

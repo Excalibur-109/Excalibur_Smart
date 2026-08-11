@@ -19,7 +19,7 @@ namespace RHI {
 template <typename HandleT, typename ResourceT>
 static HandleT makeRenderHandle(std::vector<ResourceT>& resources, ResourceT&& resource) {
     resources.push_back(std::move(resource));
-    return HandleT(static_cast<u64>(resouces.size()));
+    return HandleT(static_cast<u64>(resources.size()));
 }
 
 template <typename ResourceT, typename HandleT>
@@ -826,7 +826,7 @@ struct RHIVulkan::Impl {
         frame.stagingResources.clear();
     }
 
-    void collectDeferredRelease() noexcept {
+    void collectDeferredReleases() noexcept {
         auto release = deferredReleases.begin();
         while (release != deferredReleases.end()) {
             if (release->retireAfterSerial <= completedSubmissionSerial) {
@@ -839,7 +839,7 @@ struct RHIVulkan::Impl {
         }
     }
 
-    void flushDeferredRelease() noexcept {
+    void flushDeferredReleases() noexcept {
         for (DeferredRelease& deferred : deferredReleases) {
             deferred.release();
         }
@@ -847,28 +847,30 @@ struct RHIVulkan::Impl {
     }
 
     template <typename Release>
-    void deferredRelease(Release& release, b8 requireDeviceIdle = false) noexcept {
-        if ((requireDeviceIdle || hasUntrackedSubmissions) && deviceKnownIdle) {
+    void deferRelease(Release&& release, bool requireDeviceIdle = false) noexcept {
+        if ((requireDeviceIdle || hasUntrackedSubmissions) && !deviceKnownIdle) {
             vkDeviceWaitIdle(native.device);
             completedSubmissionSerial = lastSubmissionSerial;
             hasUntrackedSubmissions = false;
             deviceKnownIdle = true;
-            collectDeferredRelease();
+            collectDeferredReleases();
             release();
             return;
         }
-        if (lastSubmissionsSerial <= completedSubmissionSerial) {
+        if (lastSubmissionSerial <= completedSubmissionSerial) {
             release();
             return;
         }
         try {
-            deferredReleases.push_back(lastSubmissionSerial, std::forward<Release>(release));
+            deferredReleases.push_back({
+                lastSubmissionSerial,
+                std::forward<Release>(release)});
         }
         catch (...) {
             vkDeviceWaitIdle(native.device);
             completedSubmissionSerial = lastSubmissionSerial;
             deviceKnownIdle = true;
-            collectDeferredRelease();
+            collectDeferredReleases();
             release();
         }
     }
@@ -893,7 +895,7 @@ struct RHIVulkan::Impl {
         }
         completedSubmissionSerial = std::max(completedSubmissionSerial, frame.completionValue);
         releaseStagingResources(frame);
-        collectDeferredRelease();
+        collectDeferredReleases();
         if (vkResetCommandBuffer(frame.commandBuffer, 0) != VK_SUCCESS) {
             throw std::runtime_error("Failed to reset the Vulkan frame command buffer");
         }
@@ -949,13 +951,300 @@ static b8 hasExtension(const std::vector<VkExtensionProperties>& extensions, con
     });
 }
 
-static b8 appendUniqueExtension(std::vector<const char*> extensions, const char* name) {
-    const auto exists = std::any_of(extensions.begin(), extensions.end(), [name](const VkExtensionProperties& extension) {
-        return std::strcmp(extension.extensionName, name) == 0;
+static void appendUniqueExtension(std::vector<const char*>& extensions, const char* name) {
+    const auto exists = std::any_of(extensions.begin(), extensions.end(), [name](const char* existing) {
+        return std::strcmp(existing, name) == 0;
     });
     if (!exists) {
         extensions.push_back(name);
     }
+}
+
+static std::vector<VkLayerProperties> enumerateInstanceLayer() {
+    u32 count = 0;
+    vkEnumerateInstanceLayerProperties(&count, nullptr);
+    std::vector<VkLayerProperties> layers(count);
+    if (count != 0) {
+        vkEnumerateInstanceLayerProperties(&count, layers.data());
+    }
+    return layers;
+}
+
+static std::vector<VkExtensionProperties> enumerateInstanceExtensions() {
+    u32 count = 0;
+    vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr);
+    std::vector<VkExtensionProperties> extensions(count);
+    if (count != 0) {
+        vkEnumerateInstanceExtensionProperties(nullptr, &count, extensions.data());
+    }
+    return extensions;
+}
+
+static std::vector<VkExtensionProperties> enumerateDeviceExtensions(VkPhysicalDevice device) {
+    u32 count = 0;
+    vkEnumerateDeviceExtensionProperties(device, nullptr, &count, nullptr);
+    std::vector<VkExtensionProperties> extensions(count);
+    if (count != 0) {
+        vkEnumerateDeviceExtensionProperties(device, nullptr, &count, extensions.data());
+    }
+    return extensions;
+}
+
+struct VulkanSwapchainSupport {
+    VkSurfaceCapabilitiesKHR        capabilities{};
+    std::vector<VkSurfaceFormatKHR> formats;
+    std::vector<VkPresentModeKHR>   presentModes;
+    VkResult                        capabilitiesResult = VK_ERROR_INITIALIZATION_FAILED;
+    VkResult                        formatsResult      = VK_ERROR_INITIALIZATION_FAILED;
+    VkResult                        presentModesResult = VK_ERROR_INITIALIZATION_FAILED;
+    bool isUsable() const {
+        return capabilitiesResult == VK_SUCCESS && formatsResult == VK_SUCCESS && presentModesResult == VK_SUCCESS &&
+            !formats.empty() && !presentModes.empty();
+    }
+};
+
+static VulkanSwapchainSupport querySwapchainSupport(VkPhysicalDevice device, VkSurfaceKHR surface) {
+    VulkanSwapchainSupport support{};
+    if (surface == VK_NULL_HANDLE) {
+        return support;
+    }
+    support.capabilitiesResult = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &support.capabilities);
+    if (support.capabilitiesResult != VK_SUCCESS) {
+        return support;
+    }
+    u32 formatCount = 0;
+    support.formatsResult = vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, nullptr);
+    if (support.formatsResult != VK_SUCCESS) {
+        return support;
+    }
+    support.formats.resize(formatCount);
+    if (formatCount != 0) {
+        support.formatsResult = vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, support.formats.data());
+        if (support.formatsResult != VK_SUCCESS) {
+            support.formats.clear();
+            return support;
+        }
+    }
+    u32 presentModeCount = 0;
+    support.presentModesResult = vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, nullptr);
+    if (support.presentModesResult != VK_SUCCESS) {
+        return support;
+    }
+    support.presentModes.resize(presentModeCount);
+    if (presentModeCount != 0) {
+        support.presentModesResult = vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, support.presentModes.data());
+        if (support.presentModesResult != VK_SUCCESS) {
+            support.presentModes.clear();
+        }
+    }
+    return support;
+}
+
+static VkSurfaceFormatKHR chooseSwapchainFormat(const VulkanSwapchainSupport& support, const RHISwapchainDesc& desc) {
+    const VkFormat          requestedFormat     = toVkFormat(desc.preferredFormat);
+    const VkColorSpaceKHR   requestedColorSpace = toVkColorSpace(desc.colorSpace);
+    if (support.formats.size() == 1 && support.formats[0].format == VK_FORMAT_UNDEFINED) {
+        return {
+            requestedFormat == VK_FORMAT_UNDEFINED ? VK_FORMAT_B8G8R8A8_SRGB : requestedFormat,
+            requestedColorSpace
+        };
+    }
+    for (const VkSurfaceFormatKHR format : support.formats) {
+        if (format.format == requestedFormat && format.colorSpace == requestedColorSpace) {
+            return format;
+        }
+    }
+    return support.formats.empty() ? VkSurfaceFormatKHR{ VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR } : support.formats[0];
+}
+
+static VkPresentModeKHR chooseSwapchainPresentMode(const VulkanSwapchainSupport& support, RHIPresentMode requestedMode) {
+    const VkPresentModeKHR requestedPresentMode = toVkPresentMode(requestedMode);
+    if (std::find(support.presentModes.begin(), support.presentModes.end(), requestedPresentMode) != support.presentModes.end()) {
+        return requestedPresentMode;
+    }
+    return VK_PRESENT_MODE_FIFO_KHR;
+}
+
+static VkExtent2D chooseSwapchainExtent(const VulkanSwapchainSupport& support, RHIExtent2D requestedExtent) {
+    if (support.capabilities.currentExtent.width != std::numeric_limits<u32>::max()) {
+        return support.capabilities.currentExtent;
+    }
+    return {
+        std::clamp(requestedExtent.width, support.capabilities.minImageExtent.width, support.capabilities.maxImageExtent.width),
+        std::clamp(requestedExtent.height, support.capabilities.minImageExtent.height, support.capabilities.maxImageExtent.height),
+    };
+}
+
+static u32 chooseSwapchainImageCount(const VulkanSwapchainSupport& support, u32 requestedImageCount) {
+    u32 imageCount = std::max(requestedImageCount, support.capabilities.minImageCount);
+    if (support.capabilities.maxImageCount > 0) {
+        imageCount = std::min(imageCount, support.capabilities.maxImageCount);
+    }
+    return imageCount;
+}
+
+static VkSurfaceTransformFlagBitsKHR chooseSwapchainTransform(const VulkanSwapchainSupport& support, RHISurfaceTransform requestedTransform) {
+    VkSurfaceTransformFlagBitsKHR transform = toVkSurfaceTransform(requestedTransform);
+    return (support.capabilities.supportedTransforms & transform) != 0 ? transform : support.capabilities.currentTransform;
+}
+
+static VkCompositeAlphaFlagBitsKHR chooseSwapchainCompositeAlpha(const VulkanSwapchainSupport& support, RHICompositeAlphaMode requestedMode) {
+    const VkCompositeAlphaFlagBitsKHR requestedAlpha = toVkCompositeAlpha(requestedMode);
+    if ((support.capabilities.supportedCompositeAlpha & requestedAlpha) != 0) {
+        return requestedAlpha;
+    }
+    if ((support.capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0) {
+        return VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    }
+    if ((support.capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) != 0) {
+        return VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR;
+    }
+    if ((support.capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR) != 0) {
+        return VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR;
+    }
+    return VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
+}
+
+static VulkanQueueFamilies findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surface) {
+    VulkanQueueFamilies result{};
+    u32 count = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &count, nullptr);
+    std::vector<VkQueueFamilyProperties> families(count);
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &count, families.data());
+    for (u32 index = 0; index < count; ++index) {
+        const VkQueueFlags flags = families[index].queueFlags;
+        if (result.graphics == RHI_INVALID_INDEX && (flags & VK_QUEUE_GRAPHICS_BIT) != 0) {
+            result.graphics = index;
+        }
+        if ((flags & VK_QUEUE_COMPUTE_BIT) != 0) {
+            if (result.compute == RHI_INVALID_INDEX || (flags & VK_QUEUE_GRAPHICS_BIT) == 0) {
+                result.compute = index;
+            }
+        }
+        if ((flags & VK_QUEUE_TRANSFER_BIT) != 0) {
+            if (result.transfer == RHI_INVALID_INDEX || ((flags & VK_QUEUE_GRAPHICS_BIT) == 0 && (flags & VK_QUEUE_COMPUTE_BIT) == 0)) {
+                result.transfer = index;
+            }
+        }
+        if (surface != VK_NULL_HANDLE) {
+            VkBool32 presentSupport = VK_FALSE;
+            const VkResult presentResult = vkGetPhysicalDeviceSurfaceSupportKHR(device, index, surface, &presentSupport);
+            if (presentResult == VK_SUCCESS && presentSupport == VK_TRUE && result.present == RHI_INVALID_INDEX) {
+                result.present = index;
+            }
+        }
+    }
+    if (result.transfer == RHI_INVALID_INDEX) {
+        result.transfer = result.graphics;
+    }
+    if (surface == VK_NULL_HANDLE && result.present == RHI_INVALID_INDEX) {
+        result.present = result.graphics;
+    }
+    return result;
+}
+
+static bool deviceSupportsRequiredExtensions(VkPhysicalDevice device, const std::vector<const char*>& requiredExtensions, bool needsSwapchain) {
+    const std::vector<VkExtensionProperties> available = enumerateDeviceExtensions(device);
+    for (const char* extension : requiredExtensions) {
+        if (!hasExtension(available, extension)) {
+            return false;
+        }
+    }
+    return !needsSwapchain || hasExtension(available, VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+}
+
+struct VulkanDeviceSupport {
+    VkPhysicalDeviceProperties          properties{};
+    VkPhysicalDeviceFeatures            features{};
+    VkPhysicalDeviceVulkan12Features    features12{};
+    VkPhysicalDeviceVulkan13Features    features13{};
+};
+
+static VulkanDeviceSupport queryVulkanDeviceSupport(VkPhysicalDevice device) {
+    VulkanDeviceSupport support{};
+    vkGetPhysicalDeviceProperties(device, &support.properties);
+    support.features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    support.features13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+    support.features12.pNext = &support.features13;
+    VkPhysicalDeviceFeatures2 features2{};
+    features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    features2.pNext = &support.features12;
+    vkGetPhysicalDeviceFeatures2(device, &features2);
+    support.features = features2.features;
+    support.features12.pNext = nullptr;
+    support.features13.pNext = nullptr;
+    return support;
+}
+
+static bool supportsRequiredRenderFeatures(const VulkanDeviceSupport& support, const VulkanQueueFamilies& queues, RHIRenderFeature required) {
+    if (RHIHasAny(required, RHIRenderFeature::Compute)                 && queues.compute == RHI_INVALID_INDEX)                                    return false;
+    if (RHIHasAny(required, RHIRenderFeature::SamplerAnisotropy)       && support.features.samplerAnisotropy != VK_TRUE)                          return false;
+    if (RHIHasAny(required, RHIRenderFeature::GeometryShader)          && support.features.geometryShader != VK_TRUE)                             return false;
+    if (RHIHasAny(required, RHIRenderFeature::Tessellation)            && support.features.tessellationShader != VK_TRUE)                         return false;
+    if (RHIHasAny(required, RHIRenderFeature::TimestampQuery)          && support.properties.limits.timestampComputeAndGraphics != VK_TRUE)       return false;
+    if (RHIHasAny(required, RHIRenderFeature::OcclusionQuery)          && support.features.occlusionQueryPrecise != VK_TRUE)                      return false;
+    if (RHIHasAny(required, RHIRenderFeature::PipelineStatisticsQuery) && support.features.pipelineStatisticsQuery != VK_TRUE)                    return false;
+    if (RHIHasAny(required, RHIRenderFeature::DrawIndirectCount)       && support.features12.drawIndirectCount != VK_TRUE)                        return false;
+    if (RHIHasAny(required, RHIRenderFeature::DynamicRendering)        && support.features13.dynamicRendering != VK_TRUE)                         return false;
+    if (RHIHasAny(required, RHIRenderFeature::TextureCompressionBC)    && support.features.textureCompressionBC != VK_TRUE)                       return false;
+    if (RHIHasAny(required, RHIRenderFeature::TextureCompressionETC2)  && support.features.textureCompressionETC2 != VK_TRUE)                     return false;
+    if (RHIHasAny(required, RHIRenderFeature::TextureCompressionASTC)  && support.features.textureCompressionASTC_LDR != VK_TRUE)                 return false;
+
+    // 这些功能需要额外扩展、feature chain 或资源模型；当前后端尚未实现，不能声明为可用。
+    const RHIRenderFeature unsupportedByThisBackend =
+        RHIRenderFeature::MeshShader                |
+        RHIRenderFeature::RayTracing                |
+        RHIRenderFeature::Bindless                  |
+        RHIRenderFeature::ConservativeRasterization |
+        RHIRenderFeature::Multiview;
+    return !RHIHasAny(required, unsupportedByThisBackend);
+}
+
+static i32 scorePhysicalDevice(VkPhysicalDevice device, VkSurfaceKHR surface, const RHIVulkanDesc& desc) {
+    const VulkanDeviceSupport support = queryVulkanDeviceSupport(device);
+    const auto queues = findQueueFamilies(device, surface);
+    if (queues.graphics == RHI_INVALID_INDEX) {
+        return -1;
+    }
+    if (surface != VK_NULL_HANDLE && queues.present == RHI_INVALID_INDEX) {
+        return -1;
+    }
+    if (!deviceSupportsRequiredExtensions(device, desc.requiredDeviceExtensions, surface != VK_NULL_HANDLE)) {
+        return -1;
+    }
+    if (surface != VK_NULL_HANDLE && !querySwapchainSupport(device, surface).isUsable()) {
+        return -1;
+    }
+
+    int score = 0;
+    if (support.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)   score += 1000;
+    if (support.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) score += 300;
+    score += static_cast<int>(support.properties.limits.maxImageDimension2D / 1024);
+
+    if (desc.backend.powerPreference == RHIPowerPreference::Lower &&
+        support.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) {
+        score += 1000;
+    }
+
+    if (!supportsRequiredRenderFeatures(support, queues, desc.backend.requiredFeatures)) {
+        return -1;
+    }
+
+    return score;
+}
+
+static VkDebugUtilsMessengerCreateInfoEXT makeDebugMessengerCreateInfo() {
+    VkDebugUtilsMessengerCreateInfoEXT info{};
+    info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    info.messageSeverity =
+        VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+        VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    info.messageType =
+        VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+        VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+        VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    info.pfnUserCallback = vulkanDebugCallback;
+    return info;
 }
 
 } // namespace RHI

@@ -324,31 +324,92 @@ constexpr bool operator!=(const Vector<T, N>&lhs, const Vector<T, N>& rhs) {
     return !(lhs == rhs);
 }
 
-#define DEFINE_VECTOR_BINARY_OPERATOR(OPERATOR)                                                        \
-    template <ArithmeticScalar L, ArithmeticScalar R, std::size_t N>                                   \
-    constexpr auto operator OPERATOR(const Vector<L, N>& lhs, const Vector<R, N>& rhs) noexcept {      \
-        using Result = std::common_type_t<L, R>;                                                       \
-        Vector<Result, N> output{};                                                                    \
-        for (std::size_t index = 0; index < N; ++index) {                                              \
-            output[index] = static_cast<Result>(lhs[index]) OPERATOR static_cast<Result>(rhs[index]);  \
-        }                                                                                              \
-        return output;                                                                                 \
-    }                                                                                                  \
-    template <ArithmeticScalar L, ArithmeticScalar R, std::size_t N>                                   \
-    constexpr auto operator OPERATOR(const Vector<L, N>& lhs, R rhs) {                                 \
-        return lhs OPERATOR Vector<R, N>(rhs);                                                         \
-    }                                                                                                  \
-    template <ArithmeticScalar L, ArithmeticScalar R, std::size_t N>                                   \
-    constexpr auto operator OPERATOR(L lhs, const Vector<R, N>& rhs) {                                 \
-        return Vector<L, N>(lhs) OPERATOR rhs;                                                         \
+namespace detail {
+
+template <ArithmeticScalar L, ArithmeticScalar R, std::size_t N, typename Operation>
+constexpr auto ApplyBinaryOperation(
+    const Vector<L, N>& lhs,
+    const Vector<R, N>& rhs,
+    Operation operation) noexcept {
+    using Result = std::common_type_t<L, R>;
+    Vector<Result, N> output{};
+    for (std::size_t index = 0; index < N; ++index) {
+        output[index] = operation(
+            static_cast<Result>(lhs[index]),
+            static_cast<Result>(rhs[index]));
     }
+    return output;
+}
 
-DEFINE_VECTOR_BINARY_OPERATOR(+)
-DEFINE_VECTOR_BINARY_OPERATOR(-)
-DEFINE_VECTOR_BINARY_OPERATOR(*)
-DEFINE_VECTOR_BINARY_OPERATOR(/)
+} // namespace detail
 
-#undef DEFINE_VECTOR_BINARY_OPERATOR
+template <ArithmeticScalar L, ArithmeticScalar R, std::size_t N>
+constexpr auto operator+(const Vector<L, N>& lhs, const Vector<R, N>& rhs) noexcept {
+    return detail::ApplyBinaryOperation(lhs, rhs, [](auto left, auto right) constexpr noexcept {
+        return left + right;
+    });
+}
+
+template <ArithmeticScalar L, ArithmeticScalar R, std::size_t N>
+constexpr auto operator+(const Vector<L, N>& lhs, R rhs) {
+    return lhs + Vector<R, N>(rhs);
+}
+
+template <ArithmeticScalar L, ArithmeticScalar R, std::size_t N>
+constexpr auto operator+(L lhs, const Vector<R, N>& rhs) {
+    return Vector<L, N>(lhs) + rhs;
+}
+
+template <ArithmeticScalar L, ArithmeticScalar R, std::size_t N>
+constexpr auto operator-(const Vector<L, N>& lhs, const Vector<R, N>& rhs) noexcept {
+    return detail::ApplyBinaryOperation(lhs, rhs, [](auto left, auto right) constexpr noexcept {
+        return left - right;
+    });
+}
+
+template <ArithmeticScalar L, ArithmeticScalar R, std::size_t N>
+constexpr auto operator-(const Vector<L, N>& lhs, R rhs) {
+    return lhs - Vector<R, N>(rhs);
+}
+
+template <ArithmeticScalar L, ArithmeticScalar R, std::size_t N>
+constexpr auto operator-(L lhs, const Vector<R, N>& rhs) {
+    return Vector<L, N>(lhs) - rhs;
+}
+
+template <ArithmeticScalar L, ArithmeticScalar R, std::size_t N>
+constexpr auto operator*(const Vector<L, N>& lhs, const Vector<R, N>& rhs) noexcept {
+    return detail::ApplyBinaryOperation(lhs, rhs, [](auto left, auto right) constexpr noexcept {
+        return left * right;
+    });
+}
+
+template <ArithmeticScalar L, ArithmeticScalar R, std::size_t N>
+constexpr auto operator*(const Vector<L, N>& lhs, R rhs) {
+    return lhs * Vector<R, N>(rhs);
+}
+
+template <ArithmeticScalar L, ArithmeticScalar R, std::size_t N>
+constexpr auto operator*(L lhs, const Vector<R, N>& rhs) {
+    return Vector<L, N>(lhs) * rhs;
+}
+
+template <ArithmeticScalar L, ArithmeticScalar R, std::size_t N>
+constexpr auto operator/(const Vector<L, N>& lhs, const Vector<R, N>& rhs) noexcept {
+    return detail::ApplyBinaryOperation(lhs, rhs, [](auto left, auto right) constexpr noexcept {
+        return left / right;
+    });
+}
+
+template <ArithmeticScalar L, ArithmeticScalar R, std::size_t N>
+constexpr auto operator/(const Vector<L, N>& lhs, R rhs) {
+    return lhs / Vector<R, N>(rhs);
+}
+
+template <ArithmeticScalar L, ArithmeticScalar R, std::size_t N>
+constexpr auto operator/(L lhs, const Vector<R, N>& rhs) {
+    return Vector<L, N>(lhs) / rhs;
+}
 
 template <ArithmeticScalar T, std::size_t N>
 constexpr Vector<T, N> operator-(const Vector<T, N>& value) {
@@ -361,14 +422,14 @@ constexpr Vector<T, N> operator-(const Vector<T, N>& value) {
 
 #define DEFINE_VECTOR_COMPOUND_OPERATOR(OPERATOR)                                                     \
     template <ArithmeticScalar T, ArithmeticScalar U, std::size_t N>                                  \
-    constexpr Vector<T, N>& operator OPERATOR(Vector<T, N>& lhs, const Vector<U, N>& rhs) noexcept {  \
+    constexpr Vector<T, N>& operator OPERATOR (Vector<T, N>& lhs, const Vector<U, N>& rhs) noexcept { \
         for (std::size_t index = 0; index < N; ++index) {                                             \
             lhs[index] OPERATOR static_cast<T>(rhs[index]);                                           \
         }                                                                                             \
         return lhs;                                                                                   \
     }                                                                                                 \
     template <ArithmeticScalar T, ArithmeticScalar U, std::size_t N>                                  \
-    constexpr Vector<T, N>& operator OPERATOR(Vector<T, N>& lhs, U rhs) {                             \
+    constexpr Vector<T, N>& operator OPERATOR (Vector<T, N>& lhs, U rhs) {                            \
         return lhs OPERATOR Vector<U, N>(rhs);                                                        \
     }
 
@@ -379,23 +440,33 @@ DEFINE_VECTOR_COMPOUND_OPERATOR(/=)
 
 #undef DEFINE_VECTOR_COMPOUND_OPERATOR
 
-#define DEFINE_VECTOR_INTEGRAL_OPERATOR(OPERATOR)                                                     \
-    template <IntergerScalar L, IntergerScalar R, std::size_t N>                                      \
-    constexpr auto operator OPERATOR(const Vector<L, N>& lhs, const Vector<R, N>& rhs) noexcept {     \
-        using Result = std::common_type_t<L, R>;                                                      \
-        Vector<Result, N> output{};                                                                   \
-        for (std::size_t index = 0; index < N; ++index) {                                             \
-            output[index] = static_cast<Result>(lhs[index]) OPERATOR static_cast<Result>(rhs[index]); \
-        }                                                                                             \
-        return output;                                                                                \
-    }
+template <IntergerScalar L, IntergerScalar R, std::size_t N>
+constexpr auto operator%(const Vector<L, N>& lhs, const Vector<R, N>& rhs) noexcept {
+    return detail::ApplyBinaryOperation(lhs, rhs, [](auto left, auto right) constexpr noexcept {
+        return left % right;
+    });
+}
 
-DEFINE_VECTOR_INTEGRAL_OPERATOR(%)
-DEFINE_VECTOR_INTEGRAL_OPERATOR(&)
-DEFINE_VECTOR_INTEGRAL_OPERATOR(|)
-DEFINE_VECTOR_INTEGRAL_OPERATOR(^)
+template <IntergerScalar L, IntergerScalar R, std::size_t N>
+constexpr auto operator&(const Vector<L, N>& lhs, const Vector<R, N>& rhs) noexcept {
+    return detail::ApplyBinaryOperation(lhs, rhs, [](auto left, auto right) constexpr noexcept {
+        return left & right;
+    });
+}
 
-#undef DEFINE_VECTOR_INTEGRAL_OPERATOR
+template <IntergerScalar L, IntergerScalar R, std::size_t N>
+constexpr auto operator|(const Vector<L, N>& lhs, const Vector<R, N>& rhs) noexcept {
+    return detail::ApplyBinaryOperation(lhs, rhs, [](auto left, auto right) constexpr noexcept {
+        return left | right;
+    });
+}
+
+template <IntergerScalar L, IntergerScalar R, std::size_t N>
+constexpr auto operator^(const Vector<L, N>& lhs, const Vector<R, N>& rhs) noexcept {
+    return detail::ApplyBinaryOperation(lhs, rhs, [](auto left, auto right) constexpr noexcept {
+        return left ^ right;
+    });
+}
 
 template <IntergerScalar T, std::size_t N>
 constexpr Vector<T, N> operator~(const Vector<T, N>& value) noexcept {
