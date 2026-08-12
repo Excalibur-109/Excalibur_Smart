@@ -776,7 +776,7 @@ struct RHIShaderDesc {
     std::string entryPoint = "main";
     std::string filePath;
     std::string source;
-    std::vector<std::byte> byteCode;
+    std::vector<std::byte> bytecode;
     RHIShaderCompileOptions compileOptions{};
 };
 
@@ -1126,7 +1126,7 @@ struct RHIGraphicsPipelineDesc {
     RHIDepthStencilState depthStencil{};
     RHIMultisampleState multisample{};
     RHIBlendState blend{};
-    std::vector<RHIDynamicState> dynamicState{RHIDynamicState::Viewport, RHIDynamicState::Scissor};
+    std::vector<RHIDynamicState> dynamicStates{RHIDynamicState::Viewport, RHIDynamicState::Scissor};
     std::vector<RHIFormat> colorFormats;
     RHIFormat depthStencilFormat = RHIFormat::Undefined;
     RHIRenderPass compatibleRenderPass{};
