@@ -40,7 +40,6 @@ RHIBuffer RHIVulkan::CreateBuffer(const RHIBufferDesc& desc) {
         vkDestroyBuffer(impl_->native.device, resource.buffer, nullptr);
         throw std::runtime_error("vkAllocateMemory(buffer) failed");
     }
-    // 创建对象和分配内存只是两步准备；绑定成功后，buffer 才真正拥有可访问的存储。
     if (vkBindBufferMemory(impl_->native.device, resource.buffer, resource.memory, 0) != VK_SUCCESS) {
         vkDestroyBuffer(impl_->native.device, resource.buffer, nullptr);
         vkFreeMemory(impl_->native.device, resource.memory, nullptr);
