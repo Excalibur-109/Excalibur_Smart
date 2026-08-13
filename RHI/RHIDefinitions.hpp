@@ -68,24 +68,24 @@ struct RHIHandle {
 };
 
 // 这些空 tag 只用于让 RHIHandle<T> 变成不同的 C++ 类型，不参与运行期逻辑。
-struct RHIBufferTag {};
-struct RHITextureTag {};
-struct RHITextureViewTag {};
-struct RHISamplerTag {};
-struct RHIShaderTag {};
-struct RHIPipelineLayoutTag {};
-struct RHIPipelineTag {};
-struct RHIRenderPassTag {};
-struct RHIFramebufferTag {};
-struct RHISwapchainTag {};
-struct RHIBindSetLayoutTag {};
-struct RHIBindSetTag {};
-struct RHIQueryPoolTag {};
-struct RHIPipelineCacheTag {};
-struct RHIGPUWaitGPUSignalTag {};
-struct RHICPUWaitGPUSignalTag {};
-struct RHIMeshTag {};
-struct RHIMaterialTag {};
+struct RHIBufferTag             {};
+struct RHITextureTag            {};
+struct RHITextureViewTag        {};
+struct RHISamplerTag            {};
+struct RHIShaderTag             {};
+struct RHIPipelineLayoutTag     {};
+struct RHIPipelineTag           {};
+struct RHIRenderPassTag         {};
+struct RHIFramebufferTag        {};
+struct RHISwapchainTag          {};
+struct RHIBindSetLayoutTag      {};
+struct RHIBindSetTag            {};
+struct RHIQueryPoolTag          {};
+struct RHIPipelineCacheTag      {};
+struct RHIGPUWaitGPUSignalTag   {};
+struct RHICPUWaitGPUSignalTag   {};
+struct RHIMeshTag               {};
+struct RHIMaterialTag           {};
 
 /// GPU buffer 资源，例如顶点、索引、uniform、storage、上传 staging buffer。
 using RHIBuffer = RHIHandle<RHIBufferTag>;
