@@ -55,30 +55,16 @@ template <typename Tag>
 struct RHIHandle {
     /// 资源管理器分配的逻辑 id；0 表示无效。
     u64 value = RHI_INVALID_HANDLE_VALUE;
-
     constexpr RHIHandle() noexcept = default;
 
     /// 显式从资源 id 构造句柄，避免整数被意外隐式转换成资源句柄。
-    explicit constexpr RHIHandle(u64 handleValue) noexcept
-        : value(handleValue) {
-    }
+    explicit constexpr RHIHandle(u64 handleValue) noexcept : value(handleValue) {}
 
     /// 判断句柄是否指向一个已分配的逻辑资源。
-    [[nodiscard]] constexpr bool isValid() const noexcept {
-        return value != RHI_INVALID_HANDLE_VALUE;
-    }
-
-    [[nodiscard]] explicit constexpr operator bool() const noexcept {
-        return isValid();
-    }
-
-    friend constexpr bool operator==(RHIHandle lhs, RHIHandle rhs) noexcept {
-        return lhs.value == rhs.value;
-    }
-
-    friend constexpr bool operator!=(RHIHandle lhs, RHIHandle rhs) noexcept {
-        return !(lhs == rhs);
-    }
+    [[nodiscard]] constexpr bool isValid() const noexcept { return value != RHI_INVALID_HANDLE_VALUE; }
+    [[nodiscard]] explicit constexpr operator bool() const noexcept { return isValid(); }
+    friend constexpr bool operator==(RHIHandle lhs, RHIHandle rhs) noexcept { return lhs.value == rhs.value; }
+    friend constexpr bool operator!=(RHIHandle lhs, RHIHandle rhs) noexcept { return !(lhs == rhs); }
 };
 
 // 这些空 tag 只用于让 RHIHandle<T> 变成不同的 C++ 类型，不参与运行期逻辑。
