@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Excalibur RHI 学习索引</title>
+  <link rel="stylesheet" href="rhi-learning.css">
+</head>
+<body>
+<header class="site-header"><div class="site-header-inner">
+  <a class="brand" href="index.html">Excalibur RHI 学习笔记</a>
+  <p class="subtitle">从抽象契约到 Vulkan、D3D11、D3D12 的实际源码路径</p>
+  <nav aria-label="主导航">
+    <a aria-current="page" href="index.html">总览</a><a href="rhi-definitions.html">资源与枚举</a><a href="device.html">Device</a><a href="render-graph.html">RenderGraph</a><a href="vulkan.html">Vulkan</a><a href="d3d11.html">D3D11</a><a href="d3d12.html">D3D12</a><a href="backend-comparison.html">后端对比</a><a href="official-references.html">官方资料</a>
+  </nav>
+</div></header>
+<main>
+  <p class="eyebrow">Source-guided documentation</p>
+  <h1>渲染抽象如何落到三套图形 API</h1>
+  <p class="lead">这套文档以仓库中的实际实现为中心。先理解 <code>RHIDefinitions.hpp</code> 的通用语言，再沿着 Device、RenderGraph、资源、管线、帧提交的顺序进入 Vulkan、D3D11 与 D3D12。</p>
+  <div class="callout warning"><p><span class="label limit">当前状态</span>文档会明确标注已实现、有限制和未实现部分。当前 CMake 的 <code>RHI</code> 静态库只列入公共定义、Device、RenderGraph 与 <code>RHIVulkan.hpp</code>；三套后端的 <code>.cpp</code> 虽在仓库中，但尚未加入该目标。因此本学习材料描述的是已有源码，而不是宣称它们已被当前库链接和运行。</p></div>
+
+  <h2>推荐学习路线</h2>
+  <div class="flow">
+    <div class="flow-step"><strong>1. 抽象词汇。</strong>阅读“资源与枚举”，理解一个逻辑句柄为何可以映射为不同 API 的资源、视图、绑定与管线。</div>
+    <div class="flow-step"><strong>2. 设备边界。</strong>阅读 Device，分清通用初始化请求和每个后端的窗口/扩展/适配器细节。</div>
+    <div class="flow-step"><strong>3. 图调度。</strong>阅读 RenderGraph，掌握 pass 依赖、生命周期、裁剪、别名和状态转移怎样在提交前被计算。</div>
+    <div class="flow-step"><strong>4. 选择一个后端深挖。</strong>建议先 Vulkan，再 D3D12，最后用 D3D11 对照理解隐式状态模型。</div>
+    <div class="flow-step"><strong>5. 横向复盘。</strong>通过后端对比页检查同一 RHI 描述在三个原生 API 中分别落成什么对象和命令。</div>
+  </div>
+
+  <h2>模块地图</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>层</th><th>源码入口</th><th>解决的问题</th><th>阅读时关注</th></tr></thead>
+    <tbody>
+      <tr><td>契约</td><td><code>RHI/RHIDefinitions.hpp</code></td><td>跨 API 的类型、描述符、帧包和能力模型</td><td>“意图”而非某个 API 的创建参数</td></tr>
+      <tr><td>门面</td><td><code>RHI/Device/</code></td><td>选择后端并提供统一资源生命周期接口</td><td>接口完整性与当前实现缺口</td></tr>
+      <tr><td>调度</td><td><code>RHI/RenderGraph/</code></td><td>从资源读写推导依赖、barrier、裁剪与瞬态别名</td><td>编译计划不等于原生命令</td></tr>
+      <tr><td>Vulkan</td><td><code>RHI/Vulkan/RHIVulkan*.inl</code></td><td>显式对象、descriptor set、动态渲染、timeline semaphore</td><td>资源布局和命令缓冲的边界</td></tr>
+      <tr><td>D3D11</td><td><code>RHI/D3D11/RHID3D11*.inl</code></td><td>immediate context 状态机与 DXGI 呈现</td><td>“管线”实为一组逐项绑定状态</td></tr>
+      <tr><td>D3D12</td><td><code>RHI/D3D12/RHID3D12*.inl</code></td><td>root signature、PSO、descriptor heap、resource barrier</td><td>显式 command list 与 fence</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>每个后端的源码分段</h2>
+  <p>三份 <code>.cpp</code> 都按相同顺序包含七个实现段。这不是七个独立库，而是为了让一个类的实现按职责展开，便于对照阅读。</p>
+  <pre><code>RHIVulkan.cpp / RHID3D11.cpp / RHID3D12.cpp
+  ├─ *Private.inl       映射、辅助函数、Impl 资源表
+  ├─ *Core.inl          Instance/Device/Adapter/Queue 初始化
+  ├─ *Resources.inl     Buffer、Texture、View、Shader、BindSet、Layout
+  ├─ *Pipelines.inl     Graphics / Compute pipeline 与 QueryPool
+  ├─ *SyncSwapchain.inl 同步对象、Swapchain、Acquire/Submit/Present
+  ├─ *Frame.inl         FramePacket、RenderGraph 计划、命令录制
+  └─ *Destroy.inl       句柄资源的逆序释放</code></pre>
+
+  <h2>开始前的三个原则</h2>
+  <ol>
+    <li><strong>句柄不是原生指针。</strong><code>RHIHandle&lt;Tag&gt;</code> 只保存 1-based 逻辑 ID；后端在 <code>Impl</code> 的资源表中找到真实对象。</li>
+    <li><strong>资源与视图分开。</strong><code>RHITexture</code> 表示存储，<code>RHITextureView</code> 表示对 mip、layer、aspect、格式解释后的访问窗口。对 Vulkan/D3D 都是关键概念。</li>
+    <li><strong>资源状态由使用驱动。</strong>创建描述的 <code>initialState</code> 是意图；显式 API 的真实状态需要在命令路径中用 barrier 达成。RenderGraph 通过 reads/writes 统一推导这种转换。</li>
+  </ol>
+
+  <h2>入口页</h2>
+  <div class="two-col">
+    <div><h3><a href="rhi-definitions.html">资源与枚举</a></h3><p>所有强类型句柄、格式、状态、同步、绑定、管线、帧 workload 与 RenderGraph 描述的完整索引。</p></div>
+    <div><h3><a href="device.html">Device</a></h3><p>统一门面的设计意图、创建参数与当前尚未完成的工厂实现。</p></div>
+    <div><h3><a href="render-graph.html">RenderGraph</a></h3><p>从声明图得到拓扑序、转移、生命周期和 alias slot 的过程。</p></div>
+    <div><h3><a href="vulkan.html">Vulkan</a></h3><p>VkInstance 到 vkQueuePresentKHR，及 descriptor set、dynamic rendering 的具体落点。</p></div>
+    <div><h3><a href="d3d11.html">D3D11</a></h3><p>COM 资源和 immediate context 的逐项状态绑定模型。</p></div>
+    <div><h3><a href="d3d12.html">D3D12</a></h3><p>ID3D12Resource、root signature、PSO、descriptor heap 与 fence。</p></div>
+    <div><h3><a href="official-references.html">官方资料</a></h3><p>把仓库实现逐项对照 Vulkan Registry、Khronos Guide 与 Microsoft Learn 的对象、同步、内存和呈现规则。</p></div>
+  </div>
+</main>
+<footer class="footer"><div class="footer-inner">依据当前工作区源码整理。源路径相对仓库根目录；最后检查日期：2026-08-13。</div></footer>
+</body></html>

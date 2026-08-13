@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>资源与枚举 | Excalibur RHI</title><link rel="stylesheet" href="rhi-learning.css"></head>
+<body><header class="site-header"><div class="site-header-inner"><a class="brand" href="index.html">Excalibur RHI 学习笔记</a><p class="subtitle">从抽象契约到 Vulkan、D3D11、D3D12 的实际源码路径</p><nav aria-label="主导航"><a href="index.html">总览</a><a aria-current="page" href="rhi-definitions.html">资源与枚举</a><a href="device.html">Device</a><a href="render-graph.html">RenderGraph</a><a href="vulkan.html">Vulkan</a><a href="d3d11.html">D3D11</a><a href="d3d12.html">D3D12</a><a href="backend-comparison.html">后端对比</a><a href="official-references.html">官方资料</a></nav></div></header>
+<main>
+<p class="eyebrow">RHI/RHIDefinitions.hpp</p><h1>资源、枚举与描述符</h1><p class="lead"><code>RHIDefinitions.hpp</code> 是整个 RHI 的词典。上层只表达“我要什么资源、怎样访问、在哪个阶段使用”，后端再分别生成 Vk/D3D11/D3D12 对象和命令。</p>
+<div class="callout"><p><span class="label ok">设计原则</span>把 API 特有的指针和枚举隔离在后端。比如 <code>RHIBufferDesc</code> 能变成 <code>VkBuffer</code>、<code>ID3D11Buffer</code> 或 <code>ID3D12Resource</code>，但上层不依赖其中任一个头文件。</p></div>
+
+<h2>1. 逻辑句柄：所有资源的共同入口</h2>
+<p><code>RHIHandle&lt;Tag&gt;</code> 保存一个 <code>u64 value</code>。值 <code>0</code> 无效，后端使用从 1 开始的索引访问自己 <code>Impl</code> 中的资源 vector。不同 Tag 让 C++ 在编译期阻止把纹理误传给 buffer 接口。</p>
+<div class="table-wrap"><table class="compact"><thead><tr><th>句柄</th><th>代表的逻辑对象</th><th>典型原生映射</th></tr></thead><tbody>
+<tr><td><code>RHIBuffer</code></td><td>顶点、索引、uniform、storage、staging 数据</td><td>VkBuffer / ID3D11Buffer / ID3D12Resource</td></tr>
+<tr><td><code>RHITexture</code></td><td>纹理、RT、深度图、swapchain image 的存储</td><td>VkImage / ID3D11Texture* / ID3D12Resource</td></tr>
+<tr><td><code>RHITextureView</code></td><td>对纹理指定 mip/layer/aspect/格式的访问方式</td><td>VkImageView / SRV-RTV-DSV-UAV</td></tr>
+<tr><td><code>RHISampler</code></td><td>采样过滤、寻址、比较规则</td><td>VkSampler / ID3D11SamplerState / D3D12 sampler descriptor</td></tr>
+<tr><td><code>RHIShader</code></td><td>着色器模块或已编译字节码</td><td>VkShaderModule / D3D11 shader COM object / bytecode</td></tr>
+<tr><td><code>RHIBindSetLayout</code>、<code>RHIBindSet</code></td><td>资源槽位形状与实际资源填写</td><td>descriptor set layout/set；D3D descriptor table 语义</td></tr>
+<tr><td><code>RHIPipelineLayout</code>、<code>RHIPipeline</code></td><td>绑定接口与 graphics/compute 状态组合</td><td>VkPipelineLayout/Pipeline；D3D12 RootSignature/PSO；D3D11 状态组合</td></tr>
+<tr><td><code>RHISwapchain</code>、<code>RHIQueryPool</code>、信号句柄</td><td>呈现、查询、GPU-GPU / CPU-GPU 同步</td><td>各 API 对应的 swapchain、query、semaphore/fence 模型</td></tr>
+</tbody></table></div>
+
+<h2>2. 平台、队列与能力枚举</h2>
+<div class="table-wrap"><table><thead><tr><th>枚举</th><th>全部取值</th><th>用途</th></tr></thead><tbody>
+<tr><td><code>RHIGraphicsAPI</code></td><td>Unknown, Vulkan, D3D11, D3D12, Metal, OpenGL, WebGPU</td><td>后端选择；当前已有 Vulkan、D3D11、D3D12 源码。</td></tr>
+<tr><td><code>RHIQueueType</code></td><td>Graphics, Compute, Transfer, Present</td><td>描述工作归属；后端可将多个逻辑队列映射到同一实际队列。</td></tr>
+<tr><td><code>RHIPowerPreference</code></td><td>Default, LowPower, HighPerformance</td><td>适配器选择倾向。</td></tr>
+<tr><td><code>RHIValidationMode</code></td><td>Disabled, Enabled, GpuAssisted</td><td>请求验证/调试层。实际支持取决于后端与安装环境。</td></tr>
+<tr><td><code>RHIRenderFeature</code></td><td>None, Compute, GeometryShader, Tessellation, MeshShader, RayTracing, Bindless, SamplerAnisotropy, SamplerCompare, TimestampQuery, OcclusionQuery, PipelineStatisticsQuery, IndirectDraw, DrawIndirectCount, DynamicRendering, ConservativeRasterization, TextureCompressionBC, TextureCompressionETC2, TextureCompressionASTC, Multiview, DebugMarkers</td><td>按位 flags；<code>requiredFeatures</code> 必须满足，<code>optionalFeatures</code> 尽量启用，结果写入 <code>RHICapabilities</code>。</td></tr>
+</tbody></table></div>
+<p><code>RHIEnumBitOr</code>、<code>RHIHasAny</code>、<code>RHIHasAll</code> 只适用于显式标为 flags 的 enum。它们避免把普通枚举错误地当位集组合。</p>
+
+<h2>3. 格式、采样与呈现</h2>
+<h3>RHIFormat：全量格式表</h3>
+<div class="table-wrap"><table class="compact"><thead><tr><th>类别</th><th>取值</th><th>学习要点</th></tr></thead><tbody>
+<tr><td>未定义</td><td><code>Undefined</code></td><td>默认值或无格式；不能直接用于可创建的图像资源。</td></tr>
+<tr><td>8-bit</td><td>R8_UNorm, R8_SNorm, R8_UInt, R8_SInt；RG8_UNorm, RG8_SNorm, RG8_UInt, RG8_SInt；RGBA8_UNorm, RGBA8_SNorm, RGBA8_UInt, RGBA8_SInt, RGBA8_SRGB；BGRA8_UNorm, BGRA8_SRGB</td><td>LDR 颜色、遮罩、法线编码、ID。sRGB 只用于颜色语义，不应用于普通线性数据。</td></tr>
+<tr><td>16-bit</td><td>R16_UNorm, R16_SNorm, R16_UInt, R16_SInt, R16_Float；RG16_UNorm, RG16_SNorm, RG16_UInt, RG16_SInt, RG16_Float；RGBA16_UNorm, RGBA16_SNorm, RGBA16_UInt, RGBA16_SInt, RGBA16_Float</td><td>HDR 中间结果、半精度数据、较高精度 G-buffer。</td></tr>
+<tr><td>32-bit</td><td>R32_UInt, R32_SInt, R32_Float；RG32_UInt, RG32_SInt, RG32_Float；RGB32_UInt, RGB32_SInt, RGB32_Float；RGBA32_UInt, RGBA32_SInt, RGBA32_Float</td><td>高精度属性、计算数据；占用和带宽较高。</td></tr>
+<tr><td>打包</td><td>RGB10A2_UNorm, R11G11B10_Float</td><td>常用于 HDR 输出或节省带宽的 HDR 缓冲。</td></tr>
+<tr><td>深度/模板</td><td>D16_UNorm, D24_UNorm, S8_UInt, D24_UNorm_S8_UInt, D32_Float, D32_Float_S8_UInt</td><td>只能以对应 aspect 创建视图；D3D 后端会用 typeless 资源格式支持 DSV/SRV 的不同解释。</td></tr>
+<tr><td>BC</td><td>BC1RGBA_UNorm, BC1RGBA_SRGB, BC3RGBA_UNorm, BC3RGBA_SRGB, BC5RG_UNorm, BC5RG_SNorm, BC7RGBA_UNorm, BC7RGBA_SRGB</td><td>桌面纹理压缩；由 <code>TextureCompressionBC</code> 能力控制。</td></tr>
+<tr><td>ETC2/ASTC</td><td>ETC2RGB8_UNorm, ETC2RGB8_SRGB, ETC2RGBA8_UNorm, ETC2RGBA8_SRGB；ASTC4x4_UNorm, ASTC4x4_SRGB, ASTC8x8_UNorm, ASTC8x8_SRGB</td><td>移动/跨平台压缩。当前 D3D11/D3D12 映射会返回不支持的 DXGI 格式。</td></tr>
+</tbody></table></div>
+<div class="table-wrap"><table class="compact"><thead><tr><th>枚举</th><th>取值</th><th>作用</th></tr></thead><tbody>
+<tr><td><code>RHISampleCount</code></td><td>Count1, Count2, Count4, Count8, Count16, Count32, Count64</td><td>MSAA 样本数；实际可用上限读 <code>RHICapabilities::maxSampleCount</code>。</td></tr>
+<tr><td><code>RHIPresentMode</code></td><td>Immediate, Mailbox, FIFO, FIFORelaxed</td><td>期望呈现节奏。Vulkan 根据 surface 支持选择；D3D11/D3D12 以 DXGI Present 的 sync interval/tearing 落地。</td></tr>
+<tr><td><code>RHIColorSpace</code></td><td>SRGBNonlinear, DisplayP3Nonlinear, ExtendedSRGBLinear, HDR10ST2084, HDR10HLG</td><td>swapchain 输出色彩空间请求。</td></tr>
+<tr><td><code>RHISurfaceTransform</code></td><td>Identity, Rotate90, Rotate180, Rotate270, HorizontalMirror, HorizontalMirrorRotate90, HorizontalMirrorRotate180, HorizontalMirrorRotate270, Inherit</td><td>移动或可旋转表面的输出变换。</td></tr>
+<tr><td><code>RHICompositeAlphaMode</code></td><td>Opaque, PreMultiplied, PostMultiplied, Inherit</td><td>与系统 compositor 的 alpha 合成约定。</td></tr>
+</tbody></table></div>
+
+<h2>4. 状态、阶段、访问与 barrier</h2>
+<p>这四类枚举描述“资源何时、被谁、以什么权限使用”。它们既可由手工 barrier 使用，也会成为 RenderGraph 编译 transition 的输入。</p>
+<div class="table-wrap"><table><thead><tr><th>枚举</th><th>全部取值</th><th>含义</th></tr></thead><tbody>
+<tr><td><code>RHIResourceState</code></td><td>Undefined, Common, CopySource, CopyDestination, VertexBuffer, IndexBuffer, ConstantBuffer, ShaderRead, ShaderWrite, RenderTarget, DepthRead, DepthWrite, ResolveSource, ResolveDestination, Present, IndirectArgument, AccelerationStructureRead, AccelerationStructureWrite, ShadingRateTexture</td><td>资源布局/用途的统一语义。Vulkan 转为 layout+access，D3D12 转为 resource states；D3D11 无原生 layout 但仍追踪逻辑状态。</td></tr>
+<tr><td><code>RHIPipelineStage</code></td><td>None, TopOfPipe, DrawIndirect, VertexInput, VertexShader, TessControlShader, TessEvaluationShader, GeometryShader, FragmentShader, EarlyFragmentTests, LateFragmentTests, ColorAttachmentOutput, ComputeShader, Transfer, BottomOfPipe, Host, RayTracingShader, AccelerationStructureBuild, TaskShader, MeshShader, AllGraphics, AllCommands</td><td>同步范围，决定依赖发生在管线的哪个位置。</td></tr>
+<tr><td><code>RHIAccessFlags</code></td><td>None, IndirectCommandRead, IndexRead, VertexAttributeRead, UniformRead, InputAttachmentRead, ShaderRead, ShaderWrite, ColorAttachmentRead, ColorAttachmentWrite, DepthStencilRead, DepthStencilWrite, TransferRead, TransferWrite, HostRead, HostWrite, MemoryRead, MemoryWrite, AccelerationStructureRead, AccelerationStructureWrite</td><td>读/写权限。<code>None</code> 可由 state 推导；写后读、写后写通常需要依赖。</td></tr>
+<tr><td><code>RHITextureAspect</code></td><td>None, Color, Depth, Stencil, Plane0, Plane1, Plane2, All</td><td>图像子平面。深度模板纹理必须准确选择 Depth/StenciI；<code>All</code> 由格式推导。</td></tr>
+</tbody></table></div>
+<pre><code>// 一次纹理状态意图：复制完成后在 fragment shader 中采样
+RHITextureBarrier b{};
+b.texture = texture;
+b.before = RHIResourceState::CopyDestination;
+b.after = RHIResourceState::ShaderRead;
+b.sourceStages = RHIPipelineStage::Transfer;
+b.destinationStages = RHIPipelineStage::FragmentShader;
+b.sourceAccess = RHIAccessFlags::TransferWrite;
+b.destinationAccess = RHIAccessFlags::ShaderRead;</code></pre>
+<div class="callout warning"><p><span class="label limit">帧路径限制</span>三个后端的 RenderGraph frame 路径当前都会拒绝 <code>RHIRenderPassWorkload</code> 中的显式 <code>barriers</code>，要求调用方用 graph 的 <code>reads/writes</code> 声明依赖。这样做是为了防止手工 barrier 与已编译计划冲突。</p></div>
+
+<h2>5. Buffer、Texture、View、Sampler</h2>
+<div class="table-wrap"><table><thead><tr><th>描述</th><th>关键字段</th><th>关键枚举</th><th>用途</th></tr></thead><tbody>
+<tr><td><code>RHIBufferDesc</code></td><td>size, usage, flags, memoryUsage, lifetime, persistentlyMapped, debugName</td><td><code>RHIBufferUsage</code> = None, TransferSource, TransferDestination, Vertex, Index, Uniform, Storage, Indirect, ShaderDeviceAddress；<br><code>RHIBufferCreateFlags</code> = None, DedicatedMemory, SparseBinding, RingBuffer, Transient</td><td>线性字节存储。Uniform 和 Storage 是不同访问规则，Indirect 表示 GPU 读取 draw/dispatch 参数。</td></tr>
+<tr><td><code>RHITextureDesc</code></td><td>dimension, extent, mipLevels, arrayLayers, format, samples, usage, flags, memoryUsage, lifetime, initialState</td><td><code>RHITextureUsage</code> = None, TransferSource, TransferDestination, Sampled, Storage, ColorAttachment, DepthStencilAttachment, Present, Transient；<br><code>RHITextureCreateFlags</code> = None, CubeCompatible, MutableFormat, DedicatedMemory, SparseBinding, GenerateMips, RenderGraphTransient</td><td>二维/三维/数组/cube 图像。usage 必须覆盖后续访问，否则原生 API 不能合法创建相应 view。</td></tr>
+<tr><td><code>RHITextureViewDesc</code></td><td>texture, dimension, format, aspect, baseMipLevel, mipLevelCount, baseArrayLayer, arrayLayerCount</td><td><code>RHITextureViewDimension</code> = View1D, View1DArray, View2D, View2DArray, View3D, Cube, CubeArray</td><td>把一个纹理的局部作为 sampled、storage 或 attachment 入口。</td></tr>
+<tr><td><code>RHISamplerDesc</code></td><td>minFilter, magFilter, mipmapMode, addressU/V/W, anisotropy, compare, LOD, borderColor</td><td>Filter = Nearest/Linear；Mipmap = Nearest/Linear；Address = Repeat/MirroredRepeat/ClampToEdge/ClampToBorder；Border = TransparentBlack/OpaqueBlack/OpaqueWhite；Compare = Never/Less/Equal/LessOrEqual/Greater/NotEqual/GreaterOrEqual/Always</td><td>采样规则与纹理存储解耦，可复用。</td></tr>
+</tbody></table></div>
+<p><code>RHIMemoryUsage</code> 取值为 <code>GpuOnly</code>、<code>CpuToGpu</code>、<code>GpuToCpu</code>、<code>CpuOnly</code>；<code>RHIResourceLifetime</code> 为 <code>Persistent</code>、<code>PerFrame</code>、<code>Transient</code>。前者约束 CPU/GPU 可见性，后者表达资源预期寿命，后端可据此选择 heap、分配器或池化策略。</p>
+
+<h2>6. Shader 与资源绑定</h2>
+<div class="table-wrap"><table><thead><tr><th>对象</th><th>重要取值/字段</th><th>作用</th></tr></thead><tbody>
+<tr><td><code>RHIShaderStage</code></td><td>None, Vertex, TessControl, TessEvaluation, Geometry, Fragment, Compute, Task, Mesh, AllGraphics, All</td><td>按位可见性。创建单个 shader 时必须是单一 stage；Vulkan 的 <code>toVkSingleShaderStage</code> 会检查这一点。</td></tr>
+<tr><td><code>RHIShaderLanguage</code></td><td>Unknown, GLSL, HLSL, Slang, MSL, SPIRV, DXIL</td><td>源码/字节码来源标签。当前 Vulkan 只收 SPIR-V；两个 D3D 后端会用 D3DCompile 处理 HLSL 源码或文件。</td></tr>
+<tr><td><code>RHIShaderDesc</code></td><td>stage, language, bytecode, source, filePath, entryPoint, compileOptions, specializationConstants</td><td>模块输入。编译选项含宏定义、target profile、调试与优化开关。</td></tr>
+<tr><td><code>RHIBindingType</code></td><td>UniformBuffer, StorageBuffer, SampledTexture, StorageTexture, Sampler, CombinedTextureSampler, PushConstant, AccelerationStructure</td><td>layout 中的槽位类型。<code>PushConstant</code> 进入 pipeline layout；光追资源模型当前三后端不完整或不支持。</td></tr>
+<tr><td><code>RHITextureSampleType</code></td><td>Float, UnfilterableFloat, SignedInteger, UnsignedInteger, Depth</td><td>反射/验证层用于确保 shader 采样类型与 view 匹配。</td></tr>
+</tbody></table></div>
+<p><code>RHIBindSetLayoutEntry</code> 定义 binding、type、arrayCount、visibility、writable 和 sampleType；<code>RHIBindSetLayoutDesc</code> 还包含 set 编号。<code>RHIBindSetDesc</code> 填入 <code>RHIResourceBinding</code>，其中 buffer 绑定有 offset/size，texture 绑定有 view，采样器可单独提供或与纹理合并。</p>
+<p><code>RHIPipelineLayoutDesc</code> 把多个 bind-set layout 与 <code>RHIPushConstantRange</code> 合并。这一层分别对应 Vulkan 的 <code>VkPipelineLayout</code> 和 D3D12 的 root signature；D3D11 用它保留同样的抽象布局信息。</p>
+
+<h2>7. 顶点输入与固定功能状态</h2>
+<div class="table-wrap"><table><thead><tr><th>枚举</th><th>全部取值</th><th>作用</th></tr></thead><tbody>
+<tr><td><code>RHIVertexFormat</code></td><td>Float32, Float32x2, Float32x3, Float32x4, UInt32, UInt32x2, UInt32x3, UInt32x4, SInt32, SInt32x2, SInt32x3, SInt32x4, UNorm8x4, SNorm8x4, UInt16x2, UInt16x4, SInt16x2, SInt16x4, UNorm16x2, UNorm16x4, SNorm16x2, SNorm16x4</td><td>顶点 attribute 的内存解释；不可与 <code>RHIFormat</code> 混淆。</td></tr>
+<tr><td><code>RHIVertexInputRate</code></td><td>PerVertex, PerInstance</td><td>每顶点推进或每实例推进。</td></tr>
+<tr><td><code>RHIPrimitiveTopology</code></td><td>PointList, LineList, LineStrip, TriangleList, TriangleStrip, PatchList</td><td>输入装配；PatchList 配合 tessellation。</td></tr>
+<tr><td><code>RHIPolygonMode</code></td><td>Fill, Line, Point</td><td>光栅化方式；可用性依赖 API/feature。</td></tr>
+<tr><td><code>RHICullMode</code></td><td>None, Front, Back, FrontAndBack</td><td>面剔除。</td></tr>
+<tr><td><code>RHIFrontFace</code></td><td>CounterClockwise, Clockwise</td><td>正面绕序。</td></tr>
+<tr><td><code>RHIStencilOp</code></td><td>Keep, Zero, Replace, IncrementClamp, DecrementClamp, Invert, IncrementWrap, DecrementWrap</td><td>模板测试结果的写入动作。</td></tr>
+<tr><td><code>RHIBlendFactor</code></td><td>Zero, One, SourceColor, OneMinusSourceColor, DestinationColor, OneMinusDestinationColor, SourceAlpha, OneMinusSourceAlpha, DestinationAlpha, OneMinusDestinationAlpha, ConstantColor, OneMinusConstantColor, ConstantAlpha, OneMinusConstantAlpha</td><td>源/目标颜色或 alpha 的系数。</td></tr>
+<tr><td><code>RHIBlendOp</code></td><td>Add, Subtract, ReverseSubtract, Min, Max</td><td>混合后的运算。</td></tr>
+<tr><td><code>RHILogicOp</code></td><td>Clear, And, AndReverse, Copy, AndInverted, NoOp, Xor, Or, Nor, Equivalent, Invert, OrReverse, CopyInverted, OrInverted, Nand, Set</td><td>整数/位逻辑颜色操作。</td></tr>
+<tr><td><code>RHIColorWriteMask</code></td><td>None, R, G, B, A, All</td><td>按位 flags，控制目标颜色通道写入。</td></tr>
+<tr><td><code>RHIDynamicState</code></td><td>RHIViewport, Scissor, LineWidth, DepthBias, BlendConstants, StencilReference</td><td>可不烘焙进 pipeline、在录制时设置的状态。</td></tr>
+</tbody></table></div>
+<p><code>RHIGraphicsPipelineDesc</code> 汇总 layout、shader 描述、顶点 attributes/buffers、input assembly、raster、depth-stencil、multisample、blend、color/depth 格式和动态状态；<code>RHIComputePipelineDesc</code> 只需要 layout、单个 compute shader 与可选 pipeline cache。</p>
+
+<h2>8. 查询、呈现、传输与帧 workload</h2>
+<p><code>RHIQueryType</code> 为 Timestamp、Occlusion、PipelineStatistics；<code>RHIPipelineStatisticFlags</code> 为 None、InputAssemblyVertices、InputAssemblyPrimitives、VertexShaderInvocations、GeometryShaderInvocations、GeometryShaderPrimitives、ClippingInvocations、ClippingPrimitives、FragmentShaderInvocations、TessControlShaderPatches、TessEvaluationShaderInvocations、ComputeShaderInvocations。</p>
+<p>传输层由 <code>RHIUploadBatchDesc</code>（CPU 到 buffer/texture）、<code>RHIBufferCopyDesc</code>、<code>RHITextureCopyDesc</code>、<code>RHIBufferTextureCopyDesc</code>、<code>RHITextureBlitDesc</code>、<code>RHIMipmapGenerationDesc</code> 表达。它们描述“做什么”，具体 frame 实现决定是否已经支持。</p>
+<div class="table-wrap"><table><thead><tr><th>RHIRenderPassWorkload 内容</th><th>作用</th><th>当前 frame 后端状态</th></tr></thead><tbody>
+<tr><td>viewport, scissor, draws, indexedDraws, dispatches</td><td>最基本的 raster/compute 工作</td><td><span class="label ok">已实现</span>三后端的 RenderGraph 路径都有对应录制。</td></tr>
+<tr><td>bufferCopies</td><td>buffer 到 buffer 拷贝</td><td><span class="label ok">已实现</span>三后端处理并校验范围。</td></tr>
+<tr><td>uploads.buffers / uploads.textures</td><td>本帧前上传数据</td><td><span class="label ok">已实现</span>三个后端均有上传路径和临时/staging 资源管理。</td></tr>
+<tr><td>textureCopies, bufferToTextureCopies, textureToBufferCopies, textureBlits, mipmapGenerations</td><td>高级纹理传输</td><td><span class="label missing">未实现</span>Vulkan/D3D11 统一报 texture copy/blit/mipmap 未实现；D3D12 报 advanced texture copy/blit 未实现。</td></tr>
+<tr><td>queryResets, timestampWrites, queryResolves</td><td>查询录制与结果 resolve</td><td><span class="label missing">未实现</span>三后端 RenderGraph 路径明确拒绝。</td></tr>
+<tr><td>indirectDraws, indexedIndirectDraws, indirectDispatches</td><td>GPU 间接命令</td><td><span class="label missing">未实现</span>三后端 RenderGraph 路径明确拒绝。</td></tr>
+</tbody></table></div>
+<p>场景辅助数据包括 mesh、material、transform、camera、light、render object、environment 与 <code>RHIFramePacket</code>。它们让调用方可以一次提交 settings、swapchain 请求、uploads、场景输入、图、workloads、submissions 和 present；但目前后端 frame 录制直接消费的重点仍是 graph 与 workloads。</p>
+
+<h2>9. 补充枚举：采样、附件、场景与同步</h2>
+<div class="table-wrap"><table><thead><tr><th>枚举</th><th>完整取值</th><th>作用</th></tr></thead><tbody>
+<tr><td><code>RHITextureDimension</code></td><td>Texture1D, Texture2D, Texture3D</td><td>纹理存储维度；决定原生 image/resource 的维度。</td></tr>
+<tr><td><code>RHIFilterMode</code>、<code>RHIMipmapMode</code></td><td>Nearest, Linear</td><td>分别控制 min/mag 过滤和跨 mip 过滤。</td></tr>
+<tr><td><code>RHIAddressMode</code></td><td>Repeat, MirroredRepeat, ClampToEdge, ClampToBorder</td><td>超出纹理坐标范围后的寻址规则。</td></tr>
+<tr><td><code>RHIBorderColor</code></td><td>TransparentBlack, OpaqueBlack, OpaqueWhite</td><td>ClampToBorder 采样时返回的边界颜色。</td></tr>
+<tr><td><code>RHICompareOp</code></td><td>Never, Less, Equal, LessOrEqual, Greater, NotEqual, GreaterOrEqual, Always</td><td>深度/模板比较和 comparison sampler 的比较函数。</td></tr>
+<tr><td><code>RHILoadOp</code>、<code>RHIStoreOp</code></td><td>Load, Clear, DontCare；Store, DontCare</td><td>pass 开始与结束时 attachment 内容的保留规则。</td></tr>
+<tr><td><code>RHIResolveMode</code></td><td>None, Average, Min, Max, SampleZero</td><td>MSAA color/depth/stencil resolve 策略。</td></tr>
+<tr><td><code>RHIIndexType</code></td><td>UInt16, UInt32</td><td>索引缓冲元素宽度。</td></tr>
+<tr><td><code>RHIMaterialParameterType</code></td><td>Float, Float2, Float3, Float4, Int, UInt, Bool</td><td>材质参数 CPU 数据的标量/向量类型。</td></tr>
+<tr><td><code>RHIGPUWaitGPUSignalType</code></td><td>Binary, Timeline</td><td>GPU 等 GPU 信号是一次性二值信号还是带单调 value 的 timeline。</td></tr>
+<tr><td><code>RHILightType</code></td><td>Directional, Point, Spot</td><td>光照方向、位置、范围和锥角的解释方式。</td></tr>
+<tr><td><code>RHIRenderQueue</code></td><td>Background, Opaque, AlphaTest, Transparent, Overlay</td><td>引擎侧的粗粒度绘制排序类别，不等于 GPU queue。</td></tr>
+</tbody></table></div>
+
+<h2>10. 全量描述对象索引</h2>
+<p>以下索引补齐 <code>RHIDefinitions.hpp</code> 中每个实际数据描述类型。相邻类型被放在同一行，是因为它们共同组成一个操作；阅读实现时可据此从描述回跳到对应字段。</p>
+<div class="table-wrap"><table><thead><tr><th>组</th><th>类型</th><th>每种类型的作用</th></tr></thead><tbody>
+<tr><td>初始化与几何基础</td><td><code>RHIBackendDesc</code>、<code>RHIQueueDesc</code>、<code>RHIAdapterDesc</code></td><td>分别描述后端请求、逻辑队列请求与适配器摘要。</td></tr>
+<tr><td>初始化与几何基础</td><td><code>RHIExtent2D</code>、<code>RHIExtent3D</code>、<code>RHIOffset2D</code>、<code>RHIOffset3D</code>、<code>RHIRect2D</code>、<code>RHIViewport</code></td><td>描述图像尺寸、子资源偏移、裁剪矩形和 raster viewport。</td></tr>
+<tr><td>清除与资源</td><td><code>RHIClearColor</code>、<code>RHIClearDepthStencil</code>、<code>RHIClearValue</code></td><td>颜色或深度/模板 attachment 的 clear 数据；联合值适合通用 render graph attachment。</td></tr>
+<tr><td>Shader 输入</td><td><code>RHIShaderDefine</code>、<code>RHIShaderCompileOptions</code>、<code>RHIShaderSpecializationConstant</code>、<code>RHIShaderDesc</code></td><td>分别是编译宏、编译开关、专用常量和完整 shader 模块输入。</td></tr>
+<tr><td>绑定</td><td><code>RHIBindSetLayoutEntry</code>、<code>RHIBindSetLayoutDesc</code>、<code>RHIBufferBinding</code>、<code>RHITextureBinding</code>、<code>RHIResourceBinding</code>、<code>RHIBindSetDesc</code></td><td>layout entry 声明槽位；layout 是一组槽位；buffer/texture 是具体资源引用；resource binding 统一承载它们；bind set 填入实际绑定。</td></tr>
+<tr><td>绑定与反射</td><td><code>RHIPushConstantRange</code>、<code>RHIPipelineLayoutDesc</code>、<code>RHIShaderResourceReflection</code>、<code>RHIShaderParameterReflection</code>、<code>RHIShaderReflectionDesc</code></td><td>前两者定义运行时接口；后三者保存 shader 的资源和参数反射结果，供验证/自动绑定使用。</td></tr>
+<tr><td>顶点输入</td><td><code>RHIVertexAttributeDesc</code>、<code>RHIVertexBufferLayoutDesc</code>、<code>RHIInputAssemblyState</code></td><td>attribute 指定 location/format/offset；buffer layout 指定 stride/rate；input assembly 指定拓扑与 primitive restart。</td></tr>
+<tr><td>图形状态</td><td><code>RHIRasterState</code>、<code>RHIStencilFaceState</code>、<code>RHIDepthStencilState</code>、<code>RHIMultisampleState</code>、<code>RHIColorBlendAttachmentState</code>、<code>RHIBlendState</code></td><td>分别控制光栅化、单面模板、深度模板、MSAA、单 attachment 混合和全部颜色混合状态。</td></tr>
+<tr><td>管线与查询</td><td><code>RHIGraphicsPipelineDesc</code>、<code>RHIComputePipelineDesc</code>、<code>RHIPipelineCacheDesc</code>、<code>RHIQueryPoolDesc</code></td><td>图形 PSO 输入、计算 PSO 输入、缓存初始数据和查询池类型/数量。</td></tr>
+<tr><td>传统附件</td><td><code>RHIRenderTargetDesc</code>、<code>RHIDepthStencilTargetDesc</code>、<code>RHIRenderPassDesc</code>、<code>RHIFramebufferDesc</code></td><td>color target、depth/stencil target、一次 pass 的附件集合和 framebuffer 兼容描述；动态渲染后端可只把它们当附件语义。</td></tr>
+<tr><td>呈现与状态</td><td><code>RHISwapchainDesc</code>、<code>RHITextureSubresourceRange</code>、<code>RHIGlobalBarrier</code>、<code>RHITextureBarrier</code>、<code>RHIBufferBarrier</code>、<code>RHIResourceBarriers</code></td><td>swapchain 请求、子资源范围、全局/纹理/buffer barrier 与它们的批次容器。</td></tr>
+<tr><td>上传与拷贝</td><td><code>RHIBufferUploadDesc</code>、<code>RHITextureUploadDesc</code>、<code>RHIUploadBatchDesc</code></td><td>单 buffer 上传、单 texture 子资源上传、整批上传。</td></tr>
+<tr><td>上传与拷贝</td><td><code>RHIBufferCopyDesc</code>、<code>RHITextureCopyLocation</code>、<code>RHITextureCopyDesc</code>、<code>RHIBufferTextureCopyDesc</code>、<code>RHITextureBlitDesc</code>、<code>RHIMipmapGenerationDesc</code></td><td>分别描述 buffer copy、texture 子位置、texture copy、buffer-texture copy、缩放 blit 和 mip 生成。</td></tr>
+<tr><td>Mesh 与材质</td><td><code>RHIVertexStream</code>、<code>RHIIndexStream</code>、<code>RHIBoundingBox</code>、<code>RHIBoundingSphere</code>、<code>RHISubmeshDesc</code>、<code>RHIMeshDesc</code></td><td>顶点/索引流、局部包围体、子网格范围和完整 mesh 描述。</td></tr>
+<tr><td>Mesh 与材质</td><td><code>RHITextureSlot</code>、<code>RHIMaterialParameter</code>、<code>RHIMaterialDesc</code></td><td>材质纹理槽、标量/向量参数和绑定 pipeline/资源的材质描述。</td></tr>
+<tr><td>帧命令</td><td><code>RHIDrawCommand</code>、<code>RHIDrawIndexedCommand</code>、<code>RHIDispatchCommand</code></td><td>直接 draw、indexed draw 和 compute dispatch；都引用 pipeline、bind sets 和必要的 streams/count。</td></tr>
+<tr><td>帧命令</td><td><code>RHIDrawIndirectCommand</code>、<code>RHIDrawIndexedIndirectCommand</code>、<code>RHIDispatchIndirectCommand</code></td><td>从 GPU buffer 读取参数的三种间接命令；当前三后端 RenderGraph frame 路径未实现。</td></tr>
+<tr><td>帧命令</td><td><code>RHIDebugMarkerDesc</code>、<code>RHITimestampQueryCommand</code>、<code>RHIResetQueryCommand</code>、<code>RHIResolveQueryCommand</code>、<code>RHIRenderPassWorkload</code></td><td>调试标记、写 timestamp、重置/resolve query 与一个 pass 的完整命令集合。</td></tr>
+<tr><td>同步与呈现</td><td><code>RHIGPUWaitGPUSignalDesc</code>、<code>RHICPUWaitGPUSignalDesc</code>、<code>RHIQueueWaitDesc</code>、<code>RHIQueueSignalDesc</code>、<code>RHIQueueSubmitDesc</code>、<code>RHIPresentDesc</code></td><td>创建两类信号、声明提交前等待/提交后信号、描述一次队列提交和一次 present。</td></tr>
+<tr><td>场景输入</td><td><code>RHITransformData</code>、<code>RHICameraData</code>、<code>RHILightData</code>、<code>RHIRenderObjectDesc</code></td><td>物体变换、相机矩阵、光源参数和可见渲染对象。</td></tr>
+<tr><td>场景输入</td><td><code>RHISceneEnvironmentDesc</code>、<code>RHIRenderCameraSetDesc</code>、<code>RHIRenderLightSetDesc</code>、<code>RHIRenderObjectSetDesc</code></td><td>环境/IBL 与本帧相机、光源、物体集合。</td></tr>
+<tr><td>RenderGraph</td><td><code>RHIRenderGraphResourceRef</code>、<code>RHIRenderGraphBufferDesc</code>、<code>RHIRenderGraphTextureDesc</code>、<code>RHIRenderGraphAttachmentDesc</code>、<code>RHIRenderGraphPassDesc</code>、<code>RHIRenderGraphDesc</code></td><td>资源访问引用、buffer/texture 声明、attachment、pass 与完整 graph 描述。</td></tr>
+<tr><td>整帧与能力</td><td><code>RHIFrameRenderSettings</code>、<code>RHIFramePacket</code>、<code>RHICapabilities</code></td><td>当前帧全局 settings、包含 graph/workload/present 的提交包，以及初始化后真实设备能力。</td></tr>
+</tbody></table></div>
+
+<h2>11. RenderGraph 描述层</h2>
+<p><code>RHIRenderGraphResourceType</code> 为 Buffer、Texture、SwapchainImage；<code>RHIRenderGraphResourceFlags</code> 为 None、Imported、Exported、Transient、AllowAliasing、NeverCull；<code>RHIRenderGraphPassType</code> 为 Raster、Compute、Copy、Present。</p>
+<p>每个 <code>RHIRenderGraphPassDesc</code> 提供显式依赖、reads、writes、color/depth attachments、期望 queue、是否允许 async compute、是否可裁剪以及是否有副作用。详细编译行为见 <a href="render-graph.html">RenderGraph</a> 页。</p>
+
+<h2>源码定位</h2><div class="source-list"><div>RHI/RHIDefinitions.hpp</div><div>RHI/RHIDefinitions.cpp</div></div>
+</main><footer class="footer"><div class="footer-inner">依据当前工作区源码整理。源路径相对仓库根目录；最后检查日期：2026-08-13。</div></footer></body></html>

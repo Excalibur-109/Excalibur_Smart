@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>D3D12 | Excalibur RHI</title><link rel="stylesheet" href="rhi-learning.css"></head>
+<body><header class="site-header"><div class="site-header-inner"><a class="brand" href="index.html">Excalibur RHI 学习笔记</a><p class="subtitle">从抽象契约到 Vulkan、D3D11、D3D12 的实际源码路径</p><nav aria-label="主导航"><a href="index.html">总览</a><a href="rhi-definitions.html">资源与枚举</a><a href="device.html">Device</a><a href="render-graph.html">RenderGraph</a><a href="vulkan.html">Vulkan</a><a href="d3d11.html">D3D11</a><a aria-current="page" href="d3d12.html">D3D12</a><a href="backend-comparison.html">后端对比</a><a href="official-references.html">官方资料</a></nav></div></header>
+<main>
+<p class="eyebrow">RHI/D3D12</p><h1>D3D12 后端：root signature、PSO 与显式状态</h1><p class="lead"><code>RHID3D12</code> 与 Vulkan 一样是显式模型：资源有状态，命令先录进 command list，再由 command queue 执行，GPU/CPU 顺序用 fence 维护。但它用 descriptor heap 和 root signature 取代 Vulkan 的 descriptor set/pipeline layout。</p>
+<div class="callout warning"><p><span class="label limit">构建状态</span>该后端的实现文件尚未列入当前 <code>RHI</code> CMake target；它依赖 Windows 的 D3D12、DXGI 和 D3DCompiler 组件。这页按现有源码说明其行为。</p></div>
+
+<h2>初始化与公开句柄</h2>
+<p><code>RHID3D12Desc</code> 包含 HWND、最低 feature level 和 WARP 回退开关。Core 创建 factory6、选择 adapter、创建 <code>ID3D12Device</code>、graphics command queue、command allocator、graphics command list、内部 fence 与 event，并初始化 CPU/Shader-visible descriptor heaps。</p>
+<p><code>RHID3D12NativeHandles</code> 暴露 factory6、adapter、device、graphicsQueue、commandAllocator、commandList、fence、fenceValue、feature level 与 HWND。这反映了 D3D12 的基本执行单元：资源不是自动执行，必须经过 command list → queue → fence。</p>
+
+<h2>资源映射</h2>
+<div class="table-wrap"><table><thead><tr><th>RHI 调用</th><th>D3D12 落点</th><th>实现要点</th></tr></thead><tbody>
+<tr><td><code>CreateBuffer</code></td><td><code>ID3D12Resource</code> buffer</td><td><code>toD3D12HeapType</code> 选择 DEFAULT/UPLOAD/READBACK；GpuOnly buffer 才可在 frame 中自由 transition。</td></tr>
+<tr><td><code>CreateTexture</code></td><td><code>ID3D12Resource</code> texture</td><td>创建时选择 resource flags 和初始 <code>D3D12_RESOURCE_STATES</code>；资源表追踪 <code>currentState</code>。</td></tr>
+<tr><td><code>CreateTextureView</code></td><td>SRV/RTV/DSV/UAV descriptor</td><td>view 本身是 descriptor heap 的槽位；按 usage 创建对应 descriptor。UAV texture 不允许 MSAA。</td></tr>
+<tr><td><code>CreateSampler</code></td><td>sampler descriptor heap 槽位</td><td>没有可单独持有的 sampler COM 对象；<code>CreateSampler</code> 向 heap 写入 <code>D3D12_SAMPLER_DESC</code>。</td></tr>
+<tr><td><code>CreateShaderModule</code></td><td>HLSL 编译结果 bytecode</td><td>接受 HLSL source/file 或 DXIL/DXBC 字节码；<code>D3DCompile</code> 生成 bytecode，PSO 创建时消费。</td></tr>
+<tr><td><code>CreateBindSetLayout</code></td><td>逻辑 layout</td><td>entries 之后会变成 root signature 的 descriptor table range。</td></tr>
+<tr><td><code>CreateBindSet</code></td><td>解析后的 CPU descriptors</td><td>CBV/SRV/UAV/sampler 在 CPU heap 分配；完整录制时复制/设置到 shader-visible heap。</td></tr>
+<tr><td><code>CreatePipelineLayout</code></td><td><code>ID3D12RootSignature</code></td><td>遍历 bind-set layouts 生成 descriptor table；push constants 转成 <code>32BIT_CONSTANTS</code> root parameter。</td></tr>
+</tbody></table></div>
+<p>D3D12 raw storage buffer descriptor 要求 offset 和 size 都是 4-byte 对齐；CBV 的 size 会按 <code>D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT</code> 对齐。Texture view 必须具有请求类型所需的 descriptor，例如 sampled texture 需要 SRV、storage texture 需要 UAV。</p>
+
+<h2>私有映射层</h2>
+<div class="table-wrap"><table class="compact"><thead><tr><th>函数</th><th>RHI 输入</th><th>D3D12 产物/意义</th></tr></thead><tbody>
+<tr><td><code>toD3D12ResourceStates</code></td><td><code>RHIResourceState</code></td><td>统一状态变为 <code>D3D12_RESOURCE_STATES</code>。</td></tr>
+<tr><td><code>toD3D12HeapType</code></td><td><code>RHIMemoryUsage</code></td><td>DEFAULT/UPLOAD/READBACK heap 选择。</td></tr>
+<tr><td><code>toD3D12Filter</code>、<code>toD3D12AddressMode</code>、<code>toD3D12Compare</code></td><td>Sampler 描述</td><td>生成 D3D12_SAMPLER_DESC。</td></tr>
+<tr><td><code>toD3D12VertexFormat</code></td><td><code>RHIVertexFormat</code></td><td>DXGI_FORMAT 顶点元素格式。</td></tr>
+<tr><td><code>toD3D12Topology</code>、<code>toD3D12TopologyType</code></td><td>InputAssemblyState</td><td>IA primitive topology 与 PSO topology type。</td></tr>
+<tr><td><code>toD3D12StencilOp</code>、<code>toD3D12Blend</code>、<code>toD3D12BlendOp</code>、<code>toD3D12ColorWriteMask</code></td><td>Depth/Blend 状态</td><td>PSO 固定功能字段。</td></tr>
+<tr><td><code>toD3D12ShaderVisibility</code></td><td><code>RHIShaderStage</code></td><td>root parameter 可见性。</td></tr>
+</tbody></table></div>
+
+<h2>管线：Root Signature + PSO</h2>
+<p><code>CreateGraphicsPipeline</code> 要求有效 pipeline layout/root signature，临时编译或创建 graphics shader，选择 VS/HS/DS/GS/PS，生成 input layout、raster/depth-stencil/blend/multisample、RTV/DSV formats，最后调用 <code>CreateGraphicsPipelineState</code>。vertex shader 是必要项；非 graphics stage 会报错。</p>
+<p><code>CreateComputePipeline</code> 使用同一 root signature 和 compute bytecode 调用 <code>CreateComputePipelineState</code>。<code>RHIPipelineCacheDesc::initialData</code> 若存在，作为 <code>CachedPSO</code> 的输入。D3D12 pipeline cache 句柄本身在此实现中主要保存描述，而不等于一个可写回的 Vulkan pipeline cache 对象。</p>
+<div class="callout"><p><span class="label ok">绑定时序</span>绘制前需要设置 shader-visible descriptor heap、<code>SetPipelineState</code>、graphics/compute root signature，然后对 bind set 的每个条目设置 root descriptor table。创建 CPU descriptor 只是第一步。</p></div>
+
+<h2>Swapchain、同步与资源状态</h2>
+<div class="table-wrap"><table><thead><tr><th>RHI 操作</th><th>D3D12 实现</th><th>学习重点</th></tr></thead><tbody>
+<tr><td><code>CreateSwapchain</code></td><td><code>IDXGIFactory6::CreateSwapChainForHwnd</code> → <code>IDXGISwapChain3</code></td><td>使用 FLIP_DISCARD；至少 2 个 buffer；每个 back buffer 包装成 RHITexture 和 RTV。</td></tr>
+<tr><td><code>AcquireNextImage</code></td><td><code>GetCurrentBackBufferIndex</code></td><td>DXGI 的“获得当前 back buffer”不同于 Vulkan acquire；该方法更新 RHI signal/fence 状态。</td></tr>
+<tr><td><code>Submit</code></td><td>Close command list，<code>ExecuteCommandLists</code>，signal internal fence</td><td>如果当前有打开的 command list，Submit 真正将录制命令送入 graphics queue。</td></tr>
+<tr><td><code>Present</code></td><td><code>IDXGISwapChain::Present</code></td><td>根据 present mode/tearing 选择 sync interval 与 flags。</td></tr>
+<tr><td><code>WaitIdle</code></td><td>queue signal + fence event wait</td><td>只应在 resize、退出或大规模销毁使用，不能放每帧热路径。</td></tr>
+</tbody></table></div>
+<p>RenderGraph transition 在 D3D12 frame 中通过 <code>D3D12_RESOURCE_BARRIER</code> 处理。对于 UPLOAD/READBACK heap，D3D12 原生状态受固定约束，代码不会像 DEFAULT heap 一样转换它们，但 graph 依赖仍然限制逻辑访问顺序。</p>
+
+<h2>RenderGraph 帧录制</h2>
+<div class="flow"><div class="flow-step"><strong>等待并复位。</strong>等待上一帧内部 fence，释放上一帧暂存/瞬态资源，reset allocator、command list 和 shader-visible descriptor 区域。</div><div class="flow-step"><strong>上传。</strong>为数据创建 UPLOAD staging resource，执行 CopyBufferRegion 或 CopyTextureRegion，维护资源状态。</div><div class="flow-step"><strong>图资源。</strong>导入外部 handle；为内部资源创建 transient RHI 资源及视图。</div><div class="flow-step"><strong>遍历 compiled pass。</strong>先录制 transition，再 copy/clear/绑定 RTV-DSV/设置 viewport/scissor/执行 draw、indexed draw 或 dispatch。</div><div class="flow-step"><strong>呈现前转换。</strong>若有 present，当前 back buffer 转回 <code>RHIResourceState::Present</code>。</div><div class="flow-step"><strong>提交。</strong>Close/Execute command list，signal fence，把临时所有权移交给 Impl，最后可调用 Present。</div></div>
+<div class="table-wrap"><table><thead><tr><th>workload</th><th>状态</th><th>说明</th></tr></thead><tbody>
+<tr><td>buffer/texture upload</td><td><span class="label ok">已实现</span></td><td>含子资源、范围与 pitch 验证，使用 staging resource。</td></tr>
+<tr><td>buffer copy</td><td><span class="label ok">已实现</span></td><td>执行 <code>CopyBufferRegion</code>。</td></tr>
+<tr><td>Raster attachments、clear、draw/indexed draw</td><td><span class="label ok">已实现</span></td><td>OMSetRenderTargets、Clear*View、SetPipelineState/root signature、IA、Draw*。</td></tr>
+<tr><td>compute dispatch</td><td><span class="label ok">已实现</span></td><td>SetComputeRootSignature、descriptor tables、Dispatch。</td></tr>
+<tr><td>query、indirect workload</td><td><span class="label missing">未实现</span></td><td>明确报错。</td></tr>
+<tr><td>texture copy/blit/mipmap workload</td><td><span class="label missing">未实现</span></td><td>advanced texture copy/blit 当前明确报错。</td></tr>
+<tr><td>显式 workload barriers</td><td><span class="label missing">拒绝</span></td><td>必须由 RenderGraph reads/writes 推导。</td></tr>
+</tbody></table></div>
+<div class="callout warning"><p><span class="label limit">队列范围</span>尽管 RHI 有 Compute/Transfer queue 语义，当前 D3D12 后端公开和使用的是 graphics queue、一个 allocator 和一个 graphics command list。不要将 graph 的 async compute 标记当作已完成多 queue 并发。</p></div>
+
+<h2>官方模型补充：命令分配器、命令列表与 fence</h2>
+<p>D3D12 的 command allocator 存放命令记录所需的内存，command list 只引用这些内存。执行过某个 command list 后，必须等 GPU 不再使用它关联 allocator 的命令，才能 <code>Reset</code> 该 allocator；command list 必须先 <code>Close</code>，才可以 <code>ExecuteCommandLists</code>，而它的 <code>Reset</code> 仅能在关闭后进行。当前 frame 先等待内部 fence，再 reset allocator/list，符合这一基本生命周期；将它扩展成多帧并行时，要为每个 frame context 保留独立 allocator 与 fence value。</p>
+<p><code>ID3D12CommandQueue::Signal</code> 将 fence 推进到指定值，CPU 通过 <code>GetCompletedValue</code>/<code>SetEventOnCompletion</code> 等待；queue 之间则用 <code>Wait</code> 建立 GPU-GPU 顺序。当前公开的 RHI 同步对象不等于完整跨 queue 编排，整帧仍以一个 graphics queue 与内部 fence 完成回收。</p>
+
+<h2>官方模型补充：Descriptor Heap 与 Root Signature</h2>
+<p>CBV/SRV/UAV heap 和 sampler heap 各有 CPU-visible 与 shader-visible 两种用途。只有 shader-visible heap 能由 root descriptor table 让 shader 访问；一个 command list 同时只能绑定至多一个 shader-visible CBV/SRV/UAV heap 和一个 shader-visible sampler heap，切换 heap 可能打断硬件现有工作。因此，仓库从 CPU descriptor 创建 bind set，再在录制阶段准备 shader-visible 区域的做法是合理分层，但要控制每帧容量和 heap 重置时机。</p>
+<p>root signature 是着色器可见资源的 ABI：descriptor table 指向 heap 中连续 range，root descriptor 直接提供 GPU virtual address，32-bit root constants 直接放入 command stream。它们在灵活性、根参数空间和描述符间接层之间权衡。当前实现将 bind-set layout 转成 descriptor table、将 push constant 转为 <code>32BIT_CONSTANTS</code>；变更 binding slot、range 或 visibility 时，HLSL register space 与 root signature 必须保持一致。</p>
+
+<h2>官方模型补充：资源状态、UAV 与别名</h2>
+<p>D3D12 要求应用保证资源在使用时处于正确 <code>D3D12_RESOURCE_STATES</code>。transition barrier 处理状态变化；UAV barrier 处理两次无序访问之间的全局顺序，即使状态不变；aliasing barrier 表示同一 heap 区间的旧 placed resource 与新 placed resource 交替使用。<code>COMMON</code> 是常用初始/交换状态，但状态 promotion/decay 是有条件优化，不能用来替代明确状态追踪。</p>
+<p>当前 <code>RenderGraph</code> 已计算 alias slot，但 D3D12 后端为 transient 资源创建独立 committed resource，尚未把 alias slot 落为同一 heap 上的 placed resource，也未插入 aliasing barrier。这意味着图级“生命周期不重叠”的结论已经存在，实际内存复用与相应同步尚未接入；不能把 alias slot 当成已经节省了显存。</p>
+
+<h2>官方模型补充：DXGI flip model 与 resize</h2>
+<p>D3D12 的窗口交换链通常采用 flip model。调用 <code>ResizeBuffers</code> 前，必须释放所有 back buffer 资源与相关 descriptor 的使用关系，确保 GPU 不再访问旧 buffer；resize 后重新获取 back buffer 并重建 RTV。tearing 需要检查设备支持并在创建和 Present 阶段使用匹配 flags。当前实现采用 <code>FLIP_DISCARD</code>，但 resize/recreate 仍是调用端和后续后端功能需要系统化覆盖的情况。</p>
+
+<h2>官方阅读</h2>
+<p>本页规范性补充与 Microsoft Learn 的原始链接见 <a href="official-references.html#d3d12">官方资料：D3D12</a>。推荐顺序是 command list 生命周期、descriptor heap/root signature、resource barriers，最后再回来看 RenderGraph transition 与 alias slot。</p>
+
+<h2>阅读路线</h2><ol><li>先读 <code>RHID3D12Private.inl</code> 的 <code>Impl</code>、descriptor allocator 和 resource state 映射。</li><li>读 Resources，区分 CPU descriptor 与 shader-visible descriptor。</li><li>读 PipelineLayout 如何将 RHI bind set entries 转成 root signature parameter。</li><li>读 Frame，跟踪 command list 的 Reset、Close、Execute 和 internal fence 生命周期。</li><li>对照 <a href="vulkan.html">Vulkan</a>，比较 descriptor set 与 root descriptor table 的不同。</li></ol>
+<h2>源码定位</h2><div class="source-list"><div>RHI/D3D12/RHID3D12.hpp</div><div>RHI/D3D12/RHID3D12.cpp</div><div>RHI/D3D12/RHID3D12Private.inl</div><div>RHI/D3D12/RHID3D12Core.inl</div><div>RHI/D3D12/RHID3D12Resources.inl</div><div>RHI/D3D12/RHID3D12Pipelines.inl</div><div>RHI/D3D12/RHID3D12SyncSwapchain.inl</div><div>RHI/D3D12/RHID3D12Frame.inl</div><div>RHI/D3D12/RHID3D12Destroy.inl</div></div>
+</main><footer class="footer"><div class="footer-inner">依据当前工作区源码整理。源路径相对仓库根目录；最后检查日期：2026-08-13。</div></footer></body></html>

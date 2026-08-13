@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>RenderGraph | Excalibur RHI</title><link rel="stylesheet" href="rhi-learning.css"></head>
+<body><header class="site-header"><div class="site-header-inner"><a class="brand" href="index.html">Excalibur RHI 学习笔记</a><p class="subtitle">从抽象契约到 Vulkan、D3D11、D3D12 的实际源码路径</p><nav aria-label="主导航"><a href="index.html">总览</a><a href="rhi-definitions.html">资源与枚举</a><a href="device.html">Device</a><a aria-current="page" href="render-graph.html">RenderGraph</a><a href="vulkan.html">Vulkan</a><a href="d3d11.html">D3D11</a><a href="d3d12.html">D3D12</a><a href="backend-comparison.html">后端对比</a><a href="official-references.html">官方资料</a></nav></div></header>
+<main>
+<p class="eyebrow">RHI/RenderGraph/RHIRenderGraph.*</p><h1>RenderGraph：把声明编译成执行计划</h1><p class="lead">RenderGraph 的输入不是原生命令，而是一张“哪个 pass 读/写哪个资源”的声明图。编译器利用这些信息得到稳定的执行顺序、资源状态转换、生命周期和瞬态别名分配。</p>
+<div class="callout"><p><span class="label ok">核心收益</span>调用方不必手工维护“上一 pass 把 texture 写成 RenderTarget，这一 pass 需要 ShaderRead”的全局状态机。只要正确声明 reads/writes，编译计划会形成后端可翻译的 transition。</p></div>
+
+<h2>输入：资源、pass、workload</h2>
+<div class="table-wrap"><table><thead><tr><th>描述</th><th>关键内容</th><th>它表达什么</th></tr></thead><tbody>
+<tr><td><code>RHIRenderGraphBufferDesc</code></td><td>name、<code>RHIBufferDesc</code>、flags、imported、externalHandle</td><td>内部创建或外部导入的 buffer。</td></tr>
+<tr><td><code>RHIRenderGraphTextureDesc</code></td><td>name、<code>RHITextureDesc</code>、flags、imported、externalHandle</td><td>内部创建或外部导入的 texture；swapchain image 通常属于导入资源。</td></tr>
+<tr><td><code>RHIRenderGraphResourceRef</code></td><td>name、type、state、stages、access</td><td>一个 pass 如何读写某个逻辑资源。</td></tr>
+<tr><td><code>RHIRenderGraphPassDesc</code></td><td>type、queue、dependsOnPasses、reads、writes、attachments、async/cull/side effect 标记</td><td>pass 的依赖和访问意图。</td></tr>
+<tr><td><code>RHIRenderPassWorkload</code></td><td>passName、draw/dispatch/copy/查询/间接命令等</td><td>与 passName 对应的具体工作内容；编译时验证其是否适合 pass type。</td></tr>
+</tbody></table></div>
+
+<h2>编译流程</h2>
+<div class="flow"><div class="flow-step"><strong>1. 验证。</strong>检查资源名、pass 名、读写引用、attachment、workload 与 pass 类型是否匹配。</div><div class="flow-step"><strong>2. 建依赖。</strong>从显式 <code>dependsOnPasses</code> 以及资源 hazard（读后写、写后读、写后写）构建边。</div><div class="flow-step"><strong>3. 裁剪。</strong>从 Exported、NeverCull、有副作用或最终可见输出反向标记。没有可观察结果的 cullable pass 将被排除。</div><div class="flow-step"><strong>4. 拓扑排序。</strong>生成 live pass 的稳定顺序；若出现环，编译失败。</div><div class="flow-step"><strong>5. 追踪状态。</strong>按排序观察每个资源的 state、stage、access、queue；差异产生 <code>RHIRenderGraphTransition</code>。</div><div class="flow-step"><strong>6. 分配瞬态槽。</strong>对 Transient 且 AllowAliasing 的兼容资源，根据不重叠生命周期复用 allocation slot。</div><div class="flow-step"><strong>7. 输出计划。</strong>后端拿到 <code>RHIRenderGraphExecutionPlan</code>，把 transition 和 workload 录制为原生命令。</div></div>
+
+<h2>输出：RHIRenderGraphExecutionPlan</h2>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>作用</th><th>后端使用方式</th></tr></thead><tbody>
+<tr><td><code>structureHash</code></td><td>图结构与 workload 结构的哈希</td><td>可用于缓存静态调度；动态 clear value/viewport 不必使结构缓存失效。</td></tr>
+<tr><td><code>passes</code></td><td>已编译 pass：source index、workload index、queue、dependencies、transitions、attachment 映射</td><td>按此顺序先执行 transition，再执行 copy/clear/draw/dispatch。</td></tr>
+<tr><td><code>bufferLifetimes</code>、<code>textureLifetimes</code></td><td>firstPass/lastPass</td><td>确定何时可分配或回收 transient 资源。</td></tr>
+<tr><td><code>bufferAllocationSlots</code>、<code>textureAllocationSlots</code></td><td>资源到别名槽的映射及 slot 总数</td><td>后端当前可据此创建共享或复用的瞬态对象。</td></tr>
+<tr><td><code>culledPasses</code></td><td>原始 pass 是否被裁剪</td><td>避免为无可观察输出的 work 录制命令。</td></tr>
+</tbody></table></div>
+
+<h2>一个最小依赖例子</h2>
+<pre><code>GBuffer (Raster)
+  writes: gbuffer as RenderTarget
+       |
+       |  写后读：需要 RenderTarget -> ShaderRead transition
+       v
+Lighting (Compute)
+  reads: gbuffer as ShaderRead
+  writes: hdr as ShaderWrite
+       |
+       v
+ToneMap (Raster)
+  reads: hdr as ShaderRead
+  writes: swapchain as RenderTarget
+       |
+       v
+Present
+  swapchain -> Present</code></pre>
+<p>在 Vulkan，transition 会成为 image layout/access/stage barrier；在 D3D12，主要成为 <code>D3D12_RESOURCE_BARRIER</code>；在 D3D11，它更多是逻辑正确性与绑定顺序的约束，因为 API 没有显式 resource layout。</p>
+
+<h2>提交验证不是额外的调度器</h2>
+<p><code>ValidateRHIRenderGraphSubmissions</code> 验证调用方手写的 <code>RHIQueueSubmitDesc</code> 是否遵循已编译的依赖。它不会替代 graph 计划：计划决定 pass 顺序和 barrier；submission 描述的是队列 wait/signal 的外部同步意图。提交列表为空时，后端可以使用默认提交路径。</p>
+
+<h2>当前后端消化计划的程度</h2>
+<div class="table-wrap"><table><thead><tr><th>能力</th><th>Vulkan</th><th>D3D11</th><th>D3D12</th></tr></thead><tbody>
+<tr><td>根据 plan 遍历 pass</td><td><span class="label ok">已实现</span></td><td><span class="label ok">已实现</span></td><td><span class="label ok">已实现</span></td></tr>
+<tr><td>导入与 transient buffer/texture 创建</td><td><span class="label ok">已实现</span></td><td><span class="label ok">已实现</span></td><td><span class="label ok">已实现</span></td></tr>
+<tr><td>自动 state transition</td><td><span class="label ok">已实现</span> image/buffer barrier</td><td><span class="label limit">逻辑跟踪</span> immediate context 无 layout</td><td><span class="label ok">已实现</span> resource barrier</td></tr>
+<tr><td>颜色/深度附件、clear、draw、indexed draw、dispatch</td><td><span class="label ok">已实现</span> dynamic rendering</td><td><span class="label ok">已实现</span> RTV/DSV+context</td><td><span class="label ok">已实现</span> RTV/DSV+command list</td></tr>
+<tr><td>query、indirect、纹理 copy/blit/mipmap workload</td><td><span class="label missing">拒绝</span></td><td><span class="label missing">拒绝</span></td><td><span class="label missing">拒绝</span> 高级纹理操作</td></tr>
+</tbody></table></div>
+<div class="callout warning"><p><span class="label limit">别名的含义</span>编译器已经计算 alias allocation slot，但“两个逻辑资源共用同一块 native memory”的细节由 frame 后端负责。把一个资源标为 <code>AllowAliasing</code> 前，必须保证生命周期不重叠、格式/尺寸/usage 兼容，且不会在图外继续使用。</p></div>
+
+<h2>学习检查</h2><ol class="checklist"><li>给每个跨 pass 资源写出唯一名字，并在 reads/writes 中写出准确 state。</li><li>区分 Imported（图不拥有）、Exported（图后还要用）、Transient（短命）与 NeverCull（有外部副作用）。</li><li>将图结构变化和每帧动态参数变化分开；前者影响 hash/计划缓存，后者通常不应影响。</li><li>先让 graph 自动生成 transition；不要在当前 frame 路径中填写 workload 显式 barrier。</li></ol>
+<h2>源码定位</h2><div class="source-list"><div>RHI/RenderGraph/RHIRenderGraph.hpp</div><div>RHI/RenderGraph/RHIRenderGraph.cpp</div><div>RHI/RHIDefinitions.hpp（RenderGraph 与 FramePacket 声明）</div></div>
+</main><footer class="footer"><div class="footer-inner">依据当前工作区源码整理。源路径相对仓库根目录；最后检查日期：2026-08-13。</div></footer></body></html>

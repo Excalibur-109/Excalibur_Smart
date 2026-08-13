@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Vulkan | Excalibur RHI</title><link rel="stylesheet" href="rhi-learning.css"></head>
+<body><header class="site-header"><div class="site-header-inner"><a class="brand" href="index.html">Excalibur RHI 学习笔记</a><p class="subtitle">从抽象契约到 Vulkan、D3D11、D3D12 的实际源码路径</p><nav aria-label="主导航"><a href="index.html">总览</a><a href="rhi-definitions.html">资源与枚举</a><a href="device.html">Device</a><a href="render-graph.html">RenderGraph</a><a aria-current="page" href="vulkan.html">Vulkan</a><a href="d3d11.html">D3D11</a><a href="d3d12.html">D3D12</a><a href="backend-comparison.html">后端对比</a><a href="official-references.html">官方资料</a></nav></div></header>
+<main>
+<p class="eyebrow">RHI/Vulkan</p><h1>Vulkan 后端：显式对象、状态与命令缓冲</h1><p class="lead"><code>rhi::RHIVulkan</code> 将 RHI 描述映射到 Vulkan 1.3 风格的对象图：<code>VkInstance</code>、<code>VkDevice</code>、队列、内存、descriptor set、pipeline、command buffer 和 swapchain。它是本仓库最直接体现显式同步和动态渲染的后端。</p>
+<div class="callout warning"><p><span class="label limit">构建状态</span>源码完整存在，但当前根 <code>CMakeLists.txt</code> 的 <code>RHI</code> 目标仅列入 <code>RHIVulkan.hpp</code>，没有列入 <code>RHIVulkan.cpp</code>。这页描述的是源码实现，当前静态库尚未把其实现编入。</p></div>
+
+<h2>初始化：从描述到原生设备</h2>
+<div class="flow"><div class="flow-step"><strong>Instance。</strong>收集 required/optional instance extension；请求验证时尝试 <code>VK_LAYER_KHRONOS_validation</code> 与 <code>VK_EXT_debug_utils</code>，再创建 <code>VkInstance</code>。</div><div class="flow-step"><strong>Surface。</strong>优先使用外部 <code>VkSurfaceKHR</code>；否则调用 <code>createSurface(VkInstance)</code>。surface 为空仍可离屏渲染与计算。</div><div class="flow-step"><strong>Physical device。</strong>枚举并打分，选择满足必需 feature 和 queue/surface 需求的设备。</div><div class="flow-step"><strong>Logical device。</strong>收集 device extension，若存在 surface 自动加 <code>VK_KHR_swapchain</code>；创建 graphics/compute/transfer/present queue。</div><div class="flow-step"><strong>基础池。</strong>创建 graphics command pool、timeline frame semaphore、按 <code>framesInFlight</code> 分配 primary command buffer，以及 descriptor pool。</div><div class="flow-step"><strong>Capabilities。</strong>把 Vulkan limits/features 整理为 <code>RHICapabilities</code>。</div></div>
+<div class="callout"><p><span class="label ok">硬前提</span>当前实现要求 Vulkan timeline semaphore support；如果设备不支持会初始化失败。graphics pipeline 还要求 device 支持 dynamic rendering。</p></div>
+
+<h2>公开原生句柄</h2>
+<p><code>RHIVulkanNativeHandles</code> 暴露 instance、physicalDevice、device、surface、graphics/compute/transfer/present queue 及四个 queue family index。它适合调试或与既有 Vulkan 教程代码互操作；正常上层逻辑仍应停留在 RHI 句柄层。</p>
+
+<h2>资源映射</h2>
+<div class="table-wrap"><table><thead><tr><th>RHI 调用</th><th>Vulkan 落点</th><th>实现要点</th></tr></thead><tbody>
+<tr><td><code>CreateBuffer</code></td><td><code>vkCreateBuffer</code> + <code>vkAllocateMemory</code> + <code>vkBindBufferMemory</code></td><td>usage 由 <code>toVkBufferUsage</code> 映射；按 memoryUsage 选 memory type；<code>persistentlyMapped</code> 会立即 <code>vkMapMemory</code>。</td></tr>
+<tr><td><code>CreateTexture</code></td><td><code>vkCreateImage</code> + device-local memory</td><td>真实初始 layout 固定为 <code>VK_IMAGE_LAYOUT_UNDEFINED</code>；<code>initialState</code> 不能凭空生效，第一次使用必须通过 barrier 转换。</td></tr>
+<tr><td><code>CreateTextureView</code></td><td><code>vkCreateImageView</code></td><td>view 选择 dimension、format、aspect、mip 和 array range；它才是 shader/attachment 的访问入口。</td></tr>
+<tr><td><code>CreateSampler</code></td><td><code>vkCreateSampler</code></td><td>过滤、寻址、LOD、比较采样逐项映射；各向异性上限被 clamp 到 capabilities。</td></tr>
+<tr><td><code>CreateShaderModule</code></td><td><code>vkCreateShaderModule</code></td><td>只接受非空且 4-byte 对齐的 SPIR-V bytecode 或二进制文件；不在这里编译 GLSL/HLSL。</td></tr>
+<tr><td><code>CreateBindSetLayout</code></td><td><code>VkDescriptorSetLayout</code></td><td>entry 变成 <code>VkDescriptorSetLayoutBinding</code>；PushConstant 不占 descriptor binding；AccelerationStructure 明确拒绝。</td></tr>
+<tr><td><code>CreateBindSet</code></td><td><code>vkAllocateDescriptorSets</code> + <code>vkUpdateDescriptorSets</code></td><td>Buffer/view/sampler 填入实际 descriptor；CombinedTextureSampler 同时要求有效 view 与 sampler。</td></tr>
+<tr><td><code>CreatePipelineLayout</code></td><td><code>vkCreatePipelineLayout</code></td><td>组装 descriptor set layouts 与 <code>VkPushConstantRange</code>。</td></tr>
+<tr><td><code>CreatePipelineCache</code></td><td><code>vkCreatePipelineCache</code></td><td>初始缓存数据来自 <code>RHIPipelineCacheDesc</code>。</td></tr>
+</tbody></table></div>
+
+<h2>关键映射函数</h2>
+<p><code>RHIVulkanPrivate.inl</code> 集中处理所有“抽象词汇到 Vk 枚举”的转换。阅读资源或管线代码遇到 RHI 枚举时，应先跳回这些函数确认映射，而不要假设所有值都支持。</p>
+<div class="table-wrap"><table class="compact"><thead><tr><th>RHI 家族</th><th>函数</th><th>产物</th></tr></thead><tbody>
+<tr><td>格式/图像</td><td>toVkFormat, toVkSampleCount, toVkImageType, toVkImageViewType, toVkImageAspect, toVkImageUsage, toVkImageCreateFlags</td><td>VkFormat、sample count、image/view/usage/create flags。</td></tr>
+<tr><td>Buffer/内存</td><td>toVkBufferUsage, toVkMemoryProperties, toVkWholeSize</td><td>VkBufferUsageFlags、memory property、VK_WHOLE_SIZE。</td></tr>
+<tr><td>采样</td><td>toVkFilter, toVkMipmapMode, toVkAddressMode, toVkBorderColor, toVkCompareOp</td><td>VkSamplerCreateInfo 字段。</td></tr>
+<tr><td>绑定/Shader</td><td>toVkShaderStages, toVkSingleShaderStage, toVkDescriptorType</td><td>stage flags、单一 stage 检查、descriptor type。</td></tr>
+<tr><td>图形状态</td><td>toVkVertexFormat, toVkPrimitiveTopology, toVkPolygonMode, toVkCullMode, toVkFrontFace, toVkStencilOp, toVkBlendFactor, toVkBlendOp, toVkColorWriteMask, toVkDynamicState</td><td>Graphics pipeline fixed-function state。</td></tr>
+<tr><td>呈现/同步</td><td>toVkLoadOp, toVkStoreOp, toVkPresentMode, toVkColorSpace, toVkSurfaceTransform, toVkCompositeAlpha, toVkPipelineStages</td><td>attachment、swapchain、同步 stage。</td></tr>
+</tbody></table></div>
+
+<h2>管线</h2>
+<p><code>CreateGraphicsPipeline</code> 读取 <code>RHIGraphicsPipelineDesc</code>，临时创建 shader modules、组装 vertex input/input assembly/raster/depth-stencil/multisample/blend/dynamic states，并以 dynamic rendering 的 attachment formats 创建 <code>VkPipeline</code>。每个 <code>RHIShaderDesc::stage</code> 必须恰好只有一个 bit；否则 <code>toVkSingleShaderStage</code> 抛错。</p>
+<p><code>CreateComputePipeline</code> 创建单个 compute stage 和 <code>VkComputePipelineCreateInfo</code>。两个创建函数都会使用可选的 <code>VkPipelineCache</code>。创建管线的临时 shader module 随后被销毁，pipeline 本身不依赖其继续存活。</p>
+<p><code>CreateQueryPool</code> 映射到 <code>VkQueryPool</code>；GPU 等 GPU 信号映射 binary 或 timeline <code>VkSemaphore</code>；CPU 等 GPU 信号映射 <code>VkFence</code>。</p>
+
+<h2>Swapchain、同步与呈现</h2>
+<div class="table-wrap"><table><thead><tr><th>RHI 操作</th><th>Vulkan 操作</th><th>注意点</th></tr></thead><tbody>
+<tr><td><code>CreateSwapchain</code></td><td>查询 surface capabilities/formats/present modes，<code>vkCreateSwapchainKHR</code>，再包装每个 image 和 image view</td><td>初始化时必须有有效 surface；会验证 color-attachment usage；实际格式、extent 可与请求不同。</td></tr>
+<tr><td><code>AcquireNextImage</code></td><td><code>vkAcquireNextImageKHR</code></td><td>可用 RHI semaphore/fence 接收完成信号，输出 image index。</td></tr>
+<tr><td><code>Submit</code></td><td><code>vkQueueSubmit</code></td><td>把 RHI queue waits/signals 转为 VkSemaphore wait/signal。普通 Submit 当前主要服务于同步/空命令缓冲场景。</td></tr>
+<tr><td><code>Present</code></td><td><code>vkQueuePresentKHR</code></td><td>提交当前 image，处理 wait semaphore 和返回结果。</td></tr>
+</tbody></table></div>
+
+<h2>RenderGraph 帧录制</h2>
+<p><code>RecordAndSubmitFrame</code> 选择一个 frame context，等待其 timeline value，reset/begin command buffer，处理 uploads，创建 graph 的 transient 资源，遍历已编译 pass 的 transition，再执行 workload。Raster pass 使用 <code>vkCmdBeginRendering</code>/<code>vkCmdEndRendering</code>；draw/indexed draw/dispatch 分别调用 Vulkan 命令，最后结束命令缓冲、提交 queue，并把 staging/transient 资源延后到对应 frame 完成后清理。</p>
+<div class="table-wrap"><table><thead><tr><th>workload</th><th>Vulkan 录制状态</th><th>备注</th></tr></thead><tbody>
+<tr><td>buffer / texture upload</td><td><span class="label ok">已实现</span></td><td>使用 staging buffer 和 copy/barrier，含范围、subresource、row pitch 校验。</td></tr>
+<tr><td>buffer copy</td><td><span class="label ok">已实现</span></td><td>需要有效 handle 与合法范围。</td></tr>
+<tr><td>attachments + clear + draw/indexed draw</td><td><span class="label ok">已实现</span></td><td>dynamic rendering；绑定 pipeline、descriptor set、顶点/索引流。</td></tr>
+<tr><td>compute dispatch</td><td><span class="label ok">已实现</span></td><td>绑定 compute pipeline 和 descriptor set。</td></tr>
+<tr><td>texture copy/blit/mipmap</td><td><span class="label missing">未实现</span></td><td>当前明确抛错。</td></tr>
+<tr><td>query、indirect</td><td><span class="label missing">未实现</span></td><td>当前明确抛错。</td></tr>
+</tbody></table></div>
+<div class="callout warning"><p><span class="label limit">队列模型</span>尽管初始化会取 graphics/compute/transfer/present queue，当前整帧录制使用的是 graphics command pool 与 graphics queue。不要把逻辑 <code>allowAsyncCompute</code> 误读为已有多队列并行提交实现。</p></div>
+
+<h2>官方模型补充：对象、内存与所有权</h2>
+<p>Vulkan 的对象由创建它的 instance 或 device 管辖。销毁父对象前，必须先销毁或释放所有依赖的子对象；例如销毁 <code>VkDevice</code> 前应处理由它创建的 pipeline、image view、image、buffer、descriptor pool 与同步对象。仓库的 <code>RHIVulkanDestroy.inl</code> 使用延后释放来避免 CPU 先于 GPU 销毁资源，但这不替代等待相关提交完成，也不免除父子销毁顺序。</p>
+<p>规范把资源对象和内存对象分离：<code>vkCreateBuffer</code>/<code>vkCreateImage</code> 只定义资源，随后应根据 <code>vkGet*MemoryRequirements</code> 的 size、alignment、memoryTypeBits 选择兼容 memory type，再分配并绑定。当前实现多数资源按对象单独 <code>vkAllocateMemory</code>；这易于学习和排错，但小资源过多时会造成分配数量和碎片问题。生产路径通常使用子分配器，或使用 Vulkan Memory Allocator 一类方案。</p>
+<p>持久映射不等于 CPU 写入自动对 GPU 可见。非 <code>HOST_COHERENT</code> 内存写入后需要在按 <code>nonCoherentAtomSize</code> 对齐的范围上 <code>vkFlushMappedMemoryRanges</code>；CPU 读取 GPU 写入的映射内存前则需要 invalidate。此实现会选择 host-visible 内存并映射，但调用方仍应将一致性和同步作为独立问题审查。</p>
+<div class="callout warning"><p><span class="label limit">与当前实现的边界</span>不要根据 <code>RHIHandle</code> 仍然有效就推断原生对象仍可使用。RHI 句柄、资源表条目、延后销毁队列与 Vulkan 的 GPU 完成顺序是四个不同层次；真正安全的销毁前提是所有引用它的已提交工作都已完成。</p></div>
+
+<h2>官方模型补充：同步、layout 与动态渲染</h2>
+<p>Vulkan barrier 同时表达执行依赖和内存依赖。source/destination stage mask 决定依赖覆盖的流水线阶段，access mask 指出发生过或将发生的读写，image barrier 还声明 old/new layout；它们都必须与实际使用匹配。仅把 image 从一个 layout 改成另一个而没有正确的 stage/access 范围，不能可靠地解决读写可见性问题。当前 frame 路径以 <code>vkCmdPipelineBarrier</code> 落实 RenderGraph transition，因此 graph 的 reads/writes 必须覆盖所有真实访问。</p>
+<p>动态渲染中，<code>vkCmdBeginRendering</code> 的 attachment view、load/store、resolve 和 layout 共同定义 raster pass。attachment 在开始时必须处于声明的 layout，结束后的后继使用仍须由 barrier 转换；dynamic rendering 取消的是 render pass/framebuffer 对象，不是 attachment layout 与同步责任。仓库要求 dynamic rendering feature，正是该路径的原生前提。</p>
+<p>descriptor set layout 决定 binding 的 type、count、stage visibility 和不可变 sampler；descriptor pool 决定可分配的 descriptor 数量。set 被 command buffer 使用期间不能任意重写、释放或让其引用的对象失效。当前后端从共享 pool 分配 set，学习时应特别检查 pool 容量、set layout 生命周期和已提交 command buffer 对 descriptor 的引用。</p>
+
+<h2>官方模型补充：交换链与时间线信号量</h2>
+<p><code>vkAcquireNextImageKHR</code> 只表示某个交换链 image 已可供应用使用，不能把 timeline semaphore 传给它，仓库也明确使用 binary semaphore。提交渲染时应等待 acquire 信号，呈现时应等待渲染完成信号；遇到 <code>VK_ERROR_OUT_OF_DATE_KHR</code> 必须重建 swapchain，<code>VK_SUBOPTIMAL_KHR</code> 通常表示仍可使用但应尽快重建。重建前要保证旧 image 不再被 GPU 或 present engine 使用。</p>
+<p>timeline semaphore 的 value 单调增加，可用于表达多帧完成点；binary semaphore 只能处理一次信号/等待周期。当前 frame context 以 timeline value 回收延后资源，但 acquire/present 仍须遵守 binary semaphore 的 WSI 规则。多 queue 方案还需要额外声明 queue-family ownership transfer；当前整帧只在 graphics queue 上执行，尚未进入这条路径。</p>
+
+<h2>官方阅读</h2>
+<p>本页的“官方模型补充”按规范规则解释，完整链接与条目用途见 <a href="official-references.html#vulkan">官方资料：Vulkan</a>。建议先读内存分配和同步示例，再带着具体的 <code>RHIVulkanFrame.inl</code> barrier 逐项核对。</p>
+
+<h2>建议的阅读顺序</h2><ol><li><code>RHIVulkan.hpp</code> 先看所有权和公开接口。</li><li><code>RHIVulkanPrivate.inl</code> 看 <code>Impl</code>、句柄表和映射。</li><li><code>RHIVulkanCore.inl</code> 追初始化和 capabilities。</li><li>按 Resources → Pipelines → SyncSwapchain → Frame 的顺序，随时回到 <a href="rhi-definitions.html">资源与枚举</a> 页核对 RHI 意图。</li></ol>
+<h2>源码定位</h2><div class="source-list"><div>RHI/Vulkan/RHIVulkan.hpp</div><div>RHI/Vulkan/RHIVulkan.cpp</div><div>RHI/Vulkan/RHIVulkanPrivate.inl</div><div>RHI/Vulkan/RHIVulkanCore.inl</div><div>RHI/Vulkan/RHIVulkanResources.inl</div><div>RHI/Vulkan/RHIVulkanPipelines.inl</div><div>RHI/Vulkan/RHIVulkanSyncSwapchain.inl</div><div>RHI/Vulkan/RHIVulkanFrame.inl</div><div>RHI/Vulkan/RHIVulkanDestroy.inl</div></div>
+</main><footer class="footer"><div class="footer-inner">依据当前工作区源码整理。源路径相对仓库根目录；最后检查日期：2026-08-13。</div></footer></body></html>

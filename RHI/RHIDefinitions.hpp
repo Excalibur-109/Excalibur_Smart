@@ -2,6 +2,8 @@
 
 // Standalone RHI definitions. No legacy Render dependency.
 
+#include "../AliasDefinitions.hpp"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -15,20 +17,6 @@
 
 /// 固定宽度无符号 8 位整数。
 namespace RHI {
-
-using u8 = std::uint8_t;
-
-/// 固定宽度无符号 16 位整数。
-using u16 = std::uint16_t;
-
-/// 固定宽度无符号 32 位整数。
-using u32 = std::uint32_t;
-
-/// 固定宽度无符号 64 位整数。
-using u64 = std::uint64_t;
-
-/// 固定宽度有符号 32 位整数。
-using i32 = std::int32_t;
 
 /**
  * @file RHIDefinitions.hpp

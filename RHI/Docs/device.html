@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Device | Excalibur RHI</title><link rel="stylesheet" href="rhi-learning.css"></head>
+<body><header class="site-header"><div class="site-header-inner"><a class="brand" href="index.html">Excalibur RHI 学习笔记</a><p class="subtitle">从抽象契约到 Vulkan、D3D11、D3D12 的实际源码路径</p><nav aria-label="主导航"><a href="index.html">总览</a><a href="rhi-definitions.html">资源与枚举</a><a aria-current="page" href="device.html">Device</a><a href="render-graph.html">RenderGraph</a><a href="vulkan.html">Vulkan</a><a href="d3d11.html">D3D11</a><a href="d3d12.html">D3D12</a><a href="backend-comparison.html">后端对比</a><a href="official-references.html">官方资料</a></nav></div></header>
+<main>
+<p class="eyebrow">RHI/Device</p><h1>统一 Device 门面</h1><p class="lead">Device 层的目标是把“选哪种 API”和“如何创建资源、提交、呈现”收敛成统一入口。它的公开接口已经勾勒出一个完整 RHI，但当前实现仍处于未完成状态。</p>
+<div class="callout danger"><p><span class="label missing">真实缺口</span><code>RHIDevice.cpp</code> 目前没有实现 <code>RHIDevice</code> 的成员函数；<code>CreateRHIDevice(const RHIDeviceCreateDesc&amp;,...)</code> 即使 <code>Initialize</code> 成功也会 <code>return nullptr</code>。因此不能把它当作可工作的后端工厂。学习具体资源和帧提交，请直接查看三个具体后端类。</p></div>
+
+<h2>设计边界</h2>
+<p><code>RHIDevice</code> 位于公共层，理论上持有私有 <code>Impl</code>，向调用方暴露统一的创建、查询、提交与销毁接口。它不应该在头文件里泄露 <code>VkDevice</code>、<code>ID3D11Device</code> 或 <code>ID3D12Device</code>，否则上层会失去跨后端可移植性。</p>
+<div class="flow"><div class="flow-step"><strong>调用方：</strong>构造 <code>RHIDeviceCreateDesc</code>，只表达 API、特性、队列和窗口/Surface 的通用需求。</div><div class="flow-step"><strong>工厂：</strong>选择 <code>RHIGraphicsAPI</code> 对应的具体后端并把平台参数转入专用描述。</div><div class="flow-step"><strong>具体后端：</strong>创建原生 device 与资源表，返回 RHI 逻辑句柄。</div><div class="flow-step"><strong>门面：</strong>将所有调用转发到选中的后端，隐藏差异。</div></div>
+
+<h2>RHIDeviceCreateDesc：可移植输入</h2>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>含义</th><th>后端如何解释</th></tr></thead><tbody>
+<tr><td><code>backend</code></td><td><code>RHIBackendDesc</code>：应用/引擎名、preferredApi、功耗偏好、验证、必需/可选 feature、framesInFlight、crash dump、pipeline cache</td><td>共同初始化意图；详细特性判断由具体后端写回 <code>RHICapabilities</code>。</td></tr>
+<tr><td><code>nativeWindow</code></td><td>不透明原生窗口指针</td><td>D3D11/D3D12 解释为 <code>HWND</code>；离屏渲染可为空。</td></tr>
+<tr><td><code>vulkanSurface</code></td><td>已创建的 <code>VkSurfaceKHR</code>，以 uintptr_t 保存</td><td>可直接交给 <code>RHIVulkanSurfaceDesc::surface</code>。</td></tr>
+<tr><td><code>createVulkanSurface</code></td><td>接收 VkInstance、返回 VkSurfaceKHR 的回调</td><td>适合 GLFW/SDL 等必须在 instance 创建后生成 surface 的窗口层。</td></tr>
+<tr><td><code>ownsVulkanSurface</code></td><td>是否由 Vulkan 后端在 Shutdown 销毁 surface</td><td>明确所有权，避免平台层和后端重复销毁。</td></tr>
+<tr><td><code>required/optionalVulkan*Extensions</code></td><td>instance 与 device 扩展列表</td><td>Vulkan 初始化逐项验证 required，选择可用 optional。</td></tr>
+<tr><td><code>queues</code></td><td><code>RHIQueueDesc</code> 列表</td><td>表达 Graphics/Compute/Transfer/Present 的期望；Vulkan 当前实际每 family 取一个 queue。</td></tr>
+<tr><td><code>allowSoftwareAdapter</code></td><td>是否允许软件适配器</td><td>D3D 后端可回退到 WARP。</td></tr>
+</tbody></table></div>
+
+<h2>理论上的统一公开接口</h2>
+<div class="table-wrap"><table><thead><tr><th>接口组</th><th>RHIDevice 方法</th><th>抽象意义</th></tr></thead><tbody>
+<tr><td>生命周期</td><td><code>Initialize</code>、<code>Shutdown</code>、<code>IsInitialized</code>、<code>Api</code>、<code>BackendNamme</code>、<code>Capabilities</code></td><td>创建和查询后端；能力应作为选择渲染路径的依据。</td></tr>
+<tr><td>资源</td><td><code>CreateBuffer</code>、<code>CreateTexture</code>、<code>CreateTextureView</code>、<code>CreateSampler</code>、<code>CreateShaderModule</code></td><td>创建 GPU 数据和访问视图。</td></tr>
+<tr><td>绑定/管线</td><td><code>CreateBindSetLayout</code>、<code>CreateBindSet</code>、<code>CreatePipelineLayout</code>、<code>CreatePipelineCache</code>、<code>CreateGraphicsPipeline</code>、<code>CreateComputePipeline</code></td><td>把 shader 接口与固定功能状态编译为可绑定对象。</td></tr>
+<tr><td>查询/同步/呈现</td><td><code>CreateQueryPool</code>、<code>CreateGPUWaitGPUSignal</code>、<code>CreateCPUWaitGPUSignal</code>、<code>CreateSwapchain</code>、GetSwapchain*、<code>AcquireNextImage</code>、<code>Submit</code>、<code>Present</code></td><td>控制帧的可显示目标和 CPU/GPU 执行顺序。</td></tr>
+<tr><td>整帧</td><td><code>SubmitFrame</code>、<code>WaitIdle</code></td><td>把 <code>RHIFramePacket</code> 与 RenderGraph 路径连接到 native command recording。</td></tr>
+<tr><td>销毁</td><td>所有资源类型的 <code>Destroy</code> 重载</td><td>按逻辑句柄释放实际对象；无效/已销毁句柄应安全忽略。</td></tr>
+</tbody></table></div>
+<div class="callout warning"><p><span class="label limit">接口拼写</span>头文件里的方法名是 <code>BackendNamme()</code>，含两个 <code>m</code>。文档按源码保留拼写；在真正实现门面前应修正为 <code>BackendName()</code> 并同步调用点。</p></div>
+
+<h2>为什么当前应直接学习具体后端</h2>
+<p>具体类 <code>rhi::RHIVulkan</code>、<code>RHI::RHID3D11</code>、<code>RHI::RHID3D12</code> 已经声明完整而几乎一致的公开生命周期 API，且每个方法都在 <code>*Core.inl</code>、<code>*Resources.inl</code>、<code>*Pipelines.inl</code>、<code>*SyncSwapchain.inl</code> 或 <code>*Frame.inl</code> 有实现。它们是现在可以逐行学习的真实路径。</p>
+<pre><code>// 当前工厂的实际控制流（简化）
+std::unique_ptr&lt;RHIDevice&gt; CreateRHIDevice(const RHIDeviceCreateDesc&amp; desc, ...) {
+    auto device = std::make_unique&lt;RHIDevice&gt;(desc.backend.preferredApi);
+    if (!device-&gt;Initialize(desc, ...)) return nullptr;
+    return nullptr; // 当前源码的未完成返回值
+}</code></pre>
+
+<h2>补全门面时应遵守的顺序</h2>
+<ol class="checklist"><li>在 <code>RHIDevice::Impl</code> 中使用 <code>std::variant</code> 或多态后端接口保存三种具体后端之一。</li><li>将 <code>RHIDeviceCreateDesc</code> 无损转换为 <code>RHIVulkanDesc</code>、<code>RHID3D11Desc</code> 或 <code>RHID3D12Desc</code>。</li><li>逐个转发创建、查询、提交与 Destroy；不要在门面里重新实现资源表。</li><li>成功初始化后返回已初始化的 <code>unique_ptr&lt;RHIDevice&gt;</code>，而不是 nullptr。</li><li>把三个后端 <code>.cpp</code> 加入 CMake 目标，并按平台条件链接 D3D 库；编写每个后端的最小初始化测试。</li></ol>
+
+<h2>源码定位</h2><div class="source-list"><div>RHI/Device/RHIDevice.hpp</div><div>RHI/Device/RHIDevice.cpp</div><div>RHI/Device/RHIDeviceDesc.hpp</div><div>RHI/Device/RHIDeviceFactory.hpp</div><div>RHI/Device/RHIDeviceFactory.cpp</div><div>CMakeLists.txt</div></div>
+</main><footer class="footer"><div class="footer-inner">依据当前工作区源码整理。源路径相对仓库根目录；最后检查日期：2026-08-13。</div></footer></body></html>

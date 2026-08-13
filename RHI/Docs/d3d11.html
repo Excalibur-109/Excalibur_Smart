@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>D3D11 | Excalibur RHI</title><link rel="stylesheet" href="rhi-learning.css"></head>
+<body><header class="site-header"><div class="site-header-inner"><a class="brand" href="index.html">Excalibur RHI 学习笔记</a><p class="subtitle">从抽象契约到 Vulkan、D3D11、D3D12 的实际源码路径</p><nav aria-label="主导航"><a href="index.html">总览</a><a href="rhi-definitions.html">资源与枚举</a><a href="device.html">Device</a><a href="render-graph.html">RenderGraph</a><a href="vulkan.html">Vulkan</a><a aria-current="page" href="d3d11.html">D3D11</a><a href="d3d12.html">D3D12</a><a href="backend-comparison.html">后端对比</a><a href="official-references.html">官方资料</a></nav></div></header>
+<main>
+<p class="eyebrow">RHI/D3D11</p><h1>D3D11 后端：immediate context 状态机</h1><p class="lead"><code>RHID3D11</code> 用 Direct3D 11 的 COM 对象和 immediate context 实现同一份 RHI。它与 Vulkan/D3D12 最大的差异是：没有显式 command list、资源 layout 或完整 PSO；绘制时需要把各个状态对象逐项设置到 context。</p>
+<div class="callout warning"><p><span class="label limit">构建状态</span>该后端有完整源码，但当前根 <code>CMakeLists.txt</code> 未把 <code>RHID3D11.cpp</code> 加入 <code>RHI</code> 静态库。并且它依赖 Windows、D3D11、DXGI 与 D3DCompiler，只能在合适的 Windows 目标上链接。</p></div>
+
+<h2>初始化与原生句柄</h2>
+<p><code>RHID3D11Desc</code> 包含通用 <code>RHIBackendDesc</code>、<code>RHID3D11SurfaceDesc::hwnd</code>、<code>D3D_DRIVER_TYPE</code>、最小 <code>D3D_FEATURE_LEVEL</code> 和 <code>allowWarpFallback</code>。Core 实现创建 DXGI factory/adapter、<code>ID3D11Device</code> 与 <code>ID3D11DeviceContext</code>，检查 feature level 和 required RHI feature；失败时可选择 WARP。</p>
+<p><code>RHID3D11NativeHandles</code> 对外提供 <code>IDXGIFactory1*</code>、<code>IDXGIAdapter1*</code>、<code>ID3D11Device*</code>、immediate context、实际 feature level 和 HWND。</p>
+
+<h2>格式与资源模型</h2>
+<p><code>RHID3D11Private.inl</code> 用 <code>toDxgiFormat</code>/<code>fromDxgiFormat</code> 处理大部分 <code>RHIFormat</code>。D3D11 的深度资源有一个关键细节：资源往往创建为 typeless DXGI_FORMAT，随后 DSV 解释为深度格式、SRV 解释为可采样 R 格式。这是同一张 shadow map 可写深度又可采样的基础。</p>
+<div class="table-wrap"><table><thead><tr><th>RHI 调用</th><th>D3D11 对象</th><th>实现要点</th></tr></thead><tbody>
+<tr><td><code>CreateBuffer</code></td><td><code>ID3D11Buffer</code></td><td>memoryUsage 映射 <code>D3D11_USAGE_DEFAULT/DYNAMIC/STAGING</code>；Vertex/Index/Uniform/Storage 映射 bind flags。</td></tr>
+<tr><td><code>CreateTexture</code></td><td><code>ID3D11Texture1D/2D/3D</code></td><td>usage 决定 SRV/UAV/RTV/DSV bind flags；深度使用 typeless resource format。</td></tr>
+<tr><td><code>CreateTextureView</code></td><td><code>ID3D11ShaderResourceView</code>、<code>RenderTargetView</code>、<code>DepthStencilView</code>、<code>UnorderedAccessView</code></td><td>同一个 RHITextureViewResource 可按纹理 usage 持有若干 D3D11 view。</td></tr>
+<tr><td><code>CreateSampler</code></td><td><code>ID3D11SamplerState</code></td><td>min/mag/mip 线性组合、comparison、anisotropic 都由 <code>toD3DFilter</code> 选择具体 D3D11_FILTER。</td></tr>
+<tr><td><code>CreateShaderModule</code></td><td>VS/HS/DS/GS/PS/CS COM shader</td><td>输入可为 HLSL source/file 或已编译 DXBC；调用 D3DCompile，按 stage 创建对应 shader 对象。</td></tr>
+<tr><td><code>CreateBindSetLayout</code></td><td>逻辑 layout</td><td>D3D11 没有 descriptor set layout 原生对象；保留 RHI entries 供后续绑定时验证和路由到 shader slots。</td></tr>
+<tr><td><code>CreateBindSet</code></td><td>已解析的 CB/SRV/UAV/sampler binding</td><td>资源不复制到单一 descriptor set；frame 录制时按 visibility/binding 逐项调用 context 的 *Set* 方法。</td></tr>
+<tr><td><code>CreatePipelineLayout</code></td><td>逻辑 layout</td><td>用于保持绑定模型一致；D3D11 没有 D3D12 root signature 对等物。</td></tr>
+</tbody></table></div>
+<div class="callout warning"><p><span class="label limit">格式限制</span>ETC2 与 ASTC 在 <code>toDxgiFormat</code> 中映射为 <code>DXGI_FORMAT_UNKNOWN</code>；<code>S8_UInt</code> 也没有直接 D3D11 映射。创建使用这些格式的纹理会失败。</p></div>
+
+<h2>绑定模型：为什么 D3D11 看起来不同</h2>
+<p>Vulkan 把一组资源预写进 <code>VkDescriptorSet</code>，D3D12 把 descriptor table 指向 shader-visible heap；D3D11 则是在 draw/dispatch 之前将资源按 stage 与 slot 直接绑到 immediate context。RHI 的 BindSet 仍然有价值：它把“某个 binding 放了什么资源、对哪个 stage 可见”的数据组织在一起，后端可以统一验证和应用。</p>
+<pre><code>// 概念上的 D3D11 应用过程
+applyPipeline(pipeline);        // IA layout/topology, VS/PS..., raster/depth/blend state
+applyBindSet(bindSet);          // VSSetConstantBuffers / PSSetShaderResources / ...
+context-&gt;DrawIndexed(...);      // 命令立即进入 immediate context</code></pre>
+<p>Uniform buffer 偏移有明确限制：当 <code>RHIResourceBinding</code> 请求 offset 时，代码会报告“D3D11 constant buffer offsets require D3D11.1 and are not implemented”。Storage raw buffer 的 offset 与 size 必须 4-byte 对齐。</p>
+
+<h2>管线：状态组合而非单个 PSO</h2>
+<p><code>CreateGraphicsPipeline</code> 创建 input layout、vertex/hull/domain/geometry/pixel shader、rasterizer state、depth-stencil state、blend state，并把 topology、stencil reference、blend constants、sample mask 存入 <code>PipelineResource</code>。frame 中的 <code>applyPipeline</code> 逐项绑定它们。至少需要 vertex shader；向 graphics pipeline 放 compute/task/mesh 等非图形 stage 会失败。</p>
+<p><code>CreateComputePipeline</code> 只保存 <code>ID3D11ComputeShader</code>。<code>CreateQueryPool</code> 预创建一组 <code>ID3D11Query</code>，支持 Timestamp、Occlusion、PipelineStatistics 的对象创建，但 RenderGraph query workload 当前未录制。</p>
+
+<h2>Swapchain 与同步的 D3D11 语义</h2>
+<div class="table-wrap"><table><thead><tr><th>RHI 概念</th><th>D3D11 实现</th><th>学习含义</th></tr></thead><tbody>
+<tr><td>Swapchain</td><td><code>IDXGISwapChain</code> 与其第 0 个 back buffer</td><td>实现把 back buffer 包装为 <code>RHITexture</code> + RTV/SRV。与 Vulkan/D3D12 多 image 统一接口相比，这里实际只包装一个当前 back buffer。</td></tr>
+<tr><td>AcquireNextImage</td><td>返回当前逻辑 image index</td><td>DXGI 不提供 Vulkan 风格 acquire；方法主要更新模拟同步状态。</td></tr>
+<tr><td>GPU 等 GPU 信号</td><td>轻量 CPU 状态模拟 binary/timeline semaphore</td><td>用于统一接口和示例流程，不是跨 queue 的原生精细同步。</td></tr>
+<tr><td>CPU 等 GPU 信号</td><td>以 <code>D3D11_QUERY_EVENT</code> 语义模拟</td><td>Submit 时插入 event query，等待/检查 GPU 是否已执行到该位置。</td></tr>
+<tr><td>Present</td><td><code>IDXGISwapChain::Present</code></td><td>根据 vsync/tearing 等描述计算 sync interval 与 flags。</td></tr>
+</tbody></table></div>
+
+<h2>RenderGraph 帧路径</h2>
+<p>Frame 实现处理 uploads、导入/瞬态 graph 资源、计划中的依赖、RTV/DSV 附件、viewport/scissor 和 immediate context 上的 draw/indexed draw/dispatch。资源状态在此后端主要作为逻辑状态追踪和 graph 依赖依据，而不是 Vulkan/D3D12 那种 explicit resource barrier。</p>
+<div class="table-wrap"><table><thead><tr><th>内容</th><th>状态</th><th>说明</th></tr></thead><tbody>
+<tr><td>buffer/texture uploads</td><td><span class="label ok">已实现</span></td><td>校验目标和数据范围，使用 D3D11 更新/拷贝路径。</td></tr>
+<tr><td>buffer copy</td><td><span class="label ok">已实现</span></td><td>受 graph 计划顺序约束。</td></tr>
+<tr><td>Raster attachment、clear、draw、indexed draw</td><td><span class="label ok">已实现</span></td><td>绑定 OM RTV/DSV，应用 pipeline 与 bind sets。</td></tr>
+<tr><td>compute dispatch</td><td><span class="label ok">已实现</span></td><td>应用 compute shader 与资源绑定。</td></tr>
+<tr><td>texture copy/blit/mipmap</td><td><span class="label missing">未实现</span></td><td>RenderGraph workload 明确抛错。</td></tr>
+<tr><td>query/indirect workload</td><td><span class="label missing">未实现</span></td><td>对象可创建不表示命令录制已实现。</td></tr>
+<tr><td>workload 显式 barriers</td><td><span class="label missing">拒绝</span></td><td>必须使用 graph reads/writes 声明依赖。</td></tr>
+</tbody></table></div>
+
+<h2>官方模型补充：上下文、用法与 CPU 访问</h2>
+<p>D3D11 的 immediate context 是设备的默认命令入口，调用会按 context 状态形成命令流；驱动何时把工作送往 GPU 对应用不是显式 command queue 契约。官方也支持 deferred context：它只录制命令，调用 <code>FinishCommandList</code> 得到 command list，再由 immediate context <code>ExecuteCommandList</code> 执行。当前后端只使用 immediate context，因此 RHI 的 graph pass 不是并行 D3D11 command list 录制。</p>
+<p><code>D3D11_USAGE</code>、CPU access flags、bind flags 和 misc flags 是一组受约束的组合，不是任意拼接。典型规则是：<code>DEFAULT</code> 由 GPU 读写、CPU 不直接 Map；<code>DYNAMIC</code> 适合 CPU 高频写入并通常用 <code>WRITE_DISCARD</code>；<code>STAGING</code> 用于 CPU/GPU 数据交换，不能绑定给 pipeline。仓库的 <code>toD3DUsage</code> 依照 memory usage 选用这些模式；上层不能把“可映射”误解为可作为任意 shader resource 或 render target。</p>
+<p>D3D11.1 才提供带 first constant/num constants 的 constant-buffer range 绑定。当前后端明确未实现 uniform buffer offset，因此需要为每个偏移区间建立独立 CB，或先扩展到 D3D11.1 的 <code>*SetConstantBuffers1</code> 路径。</p>
+
+<h2>官方模型补充：视图绑定与读写冲突</h2>
+<p>D3D11 没有 Vulkan layout 或 D3D12 resource barrier，但不表示可以同时读写同一子资源。运行时会阻止同一资源子资源同时作为输出绑定点（RTV/DSV/UAV）与输入 SRV；发生冲突时，相关绑定可能被自动置空并在 debug layer 报警。RenderGraph 的依赖排序只能安排 pass 顺序，不能替代将旧 SRV/UAV 从各 shader stage 解绑，再将资源作为 render target、depth target 或 UAV 绑定的职责。</p>
+<p>因此，<code>applyBindSet</code> 前后应把资源角色看作状态机：先解除冲突的输入/输出 view，再绑定新的 view，最后 draw 或 dispatch。当前 frame 路径会调用 <code>VSSetShaderResources</code>、<code>PSSetShaderResources</code>、<code>CSSetUnorderedAccessViews</code> 和 <code>OMSetRenderTargets</code>；建议使用 D3D11 debug layer 验证同一 texture 在相邻 pass 的绑定清理是否完整。</p>
+
+<h2>官方模型补充：DXGI 呈现</h2>
+<p>交换链属于 DXGI。窗口尺寸改变时，应用必须先释放对 back buffer 的所有引用并解绑 output，再调用 <code>ResizeBuffers</code>，随后重新取得 buffer 并创建 RTV。<code>Present</code> 的 sync interval 控制垂直同步；tearing 只适用于兼容的 flip-model swapchain、允许 tearing 的创建 flag 和对应 Present flag。当前实现包装第 0 个 back buffer，窗口 resize/recreate 是后续必须补齐的生命周期路径。</p>
+
+<h2>官方阅读</h2>
+<p>本页规则的 Microsoft Learn 来源及每项阅读目的见 <a href="official-references.html#d3d11">官方资料：D3D11</a>。先读资源与渲染目标文档，再用 debug layer 运行具体绑定路径，最容易发现 hazard。</p>
+
+<h2>阅读路线</h2><ol><li>从 <code>RHID3D11Private.inl</code> 的 format、depth view、usage/filter 映射开始。</li><li>读 Resources，区分 resource 与其 SRV/RTV/DSV/UAV。</li><li>读 Pipelines，理解一个 RHI pipeline 在 D3D11 中为什么是状态集合。</li><li>读 Frame 的 <code>applyPipeline</code> 与 bind set 应用，观察实际 <code>ID3D11DeviceContext</code> 调用。</li><li>最后用 <a href="backend-comparison.html">后端对比</a> 与 Vulkan/D3D12 对照。</li></ol>
+<h2>源码定位</h2><div class="source-list"><div>RHI/D3D11/RHID3D11.hpp</div><div>RHI/D3D11/RHID3D11.cpp</div><div>RHI/D3D11/RHID3D11Private.inl</div><div>RHI/D3D11/RHID3D11Core.inl</div><div>RHI/D3D11/RHID3D11Resources.inl</div><div>RHI/D3D11/RHID3D11Pipelines.inl</div><div>RHI/D3D11/RHID3D11SyncSwapchain.inl</div><div>RHI/D3D11/RHID3D11Frame.inl</div><div>RHI/D3D11/RHID3D11Destroy.inl</div></div>
+</main><footer class="footer"><div class="footer-inner">依据当前工作区源码整理。源路径相对仓库根目录；最后检查日期：2026-08-13。</div></footer></body></html>

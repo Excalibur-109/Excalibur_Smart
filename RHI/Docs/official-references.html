@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>官方资料 | Excalibur RHI</title><link rel="stylesheet" href="rhi-learning.css"></head>
+<body><header class="site-header"><div class="site-header-inner"><a class="brand" href="index.html">Excalibur RHI 学习笔记</a><p class="subtitle">从抽象契约到 Vulkan、D3D11、D3D12 的实际源码路径</p><nav aria-label="主导航"><a href="index.html">总览</a><a href="rhi-definitions.html">资源与枚举</a><a href="device.html">Device</a><a href="render-graph.html">RenderGraph</a><a href="vulkan.html">Vulkan</a><a href="d3d11.html">D3D11</a><a href="d3d12.html">D3D12</a><a href="backend-comparison.html">后端对比</a><a aria-current="page" href="official-references.html">官方资料</a></nav></div></header>
+<main>
+<p class="eyebrow">Primary sources</p><h1>官方资料、规范边界与源码对照方法</h1>
+<p class="lead">本页只收录 Khronos 与 Microsoft 的第一方资料。它不是仓库代码的替代说明：规范定义 API 合法性和同步/生命周期要求，Khronos Guide 与 Microsoft Learn 解释推荐使用模型，仓库源码则决定当前后端实际实现了什么。阅读时，先确认自己要解决的是哪一层的问题。</p>
+<div class="callout"><p><span class="label ok">使用方法</span>页面中的外链是学习入口，不是“当前后端已完全符合”的声明。每条都标明应回看本仓库的哪个主题；遇到版本、扩展或平台差异时，以 API 规范和目标平台 SDK 为准。链接最后复核日期：2026-08-13。</p></div>
+
+<h2>三层事实</h2>
+<div class="table-wrap"><table><thead><tr><th>层次</th><th>回答的问题</th><th>本学习站中的位置</th></tr></thead><tbody>
+<tr><td>正式规范 / API 参考</td><td>调用是否合法？对象何时可销毁？同步与状态的精确定义是什么？</td><td>本页链接的 Vulkan Specification/Reference 与 Microsoft API Reference。</td></tr>
+<tr><td>官方指南</td><td>推荐的资源、描述符、命令与呈现模型如何组织？常见错误是什么？</td><td>Khronos Vulkan Guide 与 Microsoft Learn overview。</td></tr>
+<tr><td>仓库实现</td><td>本项目现在创建了哪些对象、录制了哪些命令、还缺哪些路径？</td><td><a href="vulkan.html">Vulkan</a>、<a href="d3d11.html">D3D11</a>、<a href="d3d12.html">D3D12</a> 与 <a href="render-graph.html">RenderGraph</a> 页面。</td></tr>
+</tbody></table></div>
+
+<h2 id="vulkan">Vulkan：Khronos Registry 与 Vulkan Guide</h2>
+<p>Vulkan 的术语最容易在“对象创建”与“GPU 执行”之间混淆。建议先用 Guide 建立资源和同步模型，再回到 Specification/Reference 查 exact valid usage；最后对照 <a href="vulkan.html">Vulkan 后端页</a> 的 <code>RHIVulkanResources.inl</code>、<code>RHIVulkanFrame.inl</code> 与 <code>RHIVulkanSyncSwapchain.inl</code>。</p>
+<ul class="reference-list">
+<li><a href="https://docs.vulkan.org/spec/latest/chapters/fundamentals.html">Vulkan Specification: Fundamentals</a><br><span class="reference-note">对象、instance/device 作用域和基础有效性规则。用来审查创建/销毁顺序和父对象生存期。</span></li>
+<li><a href="https://docs.vulkan.org/spec/latest/chapters/memory.html">Vulkan Specification: Memory</a><br><span class="reference-note">memory requirements、memory type、allocate/bind 与 mapped memory 的规则。对应当前“每资源独立分配”的实现取舍。</span></li>
+<li><a href="https://docs.vulkan.org/guide/latest/memory_allocation.html">Vulkan Guide: Memory Allocation</a><br><span class="reference-note">设备内存选择、子分配和常见 allocator 思路。适合在读懂 <code>vkAllocateMemory</code> 直连实现后继续阅读。</span></li>
+<li><a href="https://docs.vulkan.org/spec/latest/chapters/synchronization.html">Vulkan Specification: Synchronization and Cache Control</a><br><span class="reference-note">stage/access、execution dependency、memory dependency、queue-family ownership 与 layout transition 的准确定义。</span></li>
+<li><a href="https://docs.vulkan.org/guide/latest/synchronization_examples.html">Vulkan Guide: Synchronization Examples</a><br><span class="reference-note">将 upload、attachment、compute 与 present 场景拆成可核对的 barrier 模式。适合逐项检查 RenderGraph transition。</span></li>
+<li><a href="https://docs.vulkan.org/spec/latest/chapters/descriptorsets.html">Vulkan Specification: Resource Descriptors</a><br><span class="reference-note">descriptor set layout、pool、allocation、update 与命令缓冲引用规则。对应 <code>CreateBindSetLayout</code>/<code>CreateBindSet</code>。</span></li>
+<li><a href="https://docs.vulkan.org/guide/latest/descriptor_sets.html">Vulkan Guide: Descriptor Sets</a><br><span class="reference-note">descriptor set、pool 与替代绑定模型的实用说明，便于和 D3D12 descriptor heap 横向比较。</span></li>
+<li><a href="https://docs.vulkan.org/refpages/latest/refpages/source/vkAcquireNextImageKHR.html">Vulkan Reference: vkAcquireNextImageKHR</a>，<a href="https://docs.vulkan.org/refpages/latest/refpages/source/vkQueuePresentKHR.html">vkQueuePresentKHR</a><br><span class="reference-note">WSI acquire/present 的返回值和 semaphore 约束。重点确认 out-of-date/suboptimal 与 binary semaphore 使用。</span></li>
+<li><a href="https://docs.vulkan.org/refpages/latest/refpages/source/VkSemaphoreTypeCreateInfo.html">Vulkan Reference: VkSemaphoreTypeCreateInfo</a><br><span class="reference-note">binary/timeline semaphore 的类型和 initial value。对应 frame timeline 与交换链 acquire semaphore 不能混用的原因。</span></li>
+</ul>
+
+<h2 id="d3d11">D3D11：Microsoft Learn</h2>
+<p>D3D11 依然有严格资源和绑定规则，只是许多状态转换由 runtime/driver 隐式处理。阅读时，重点不要把“没有显式 barrier”理解成“同一资源可以随意同时读写”。对照 <a href="d3d11.html">D3D11 后端页</a> 时，特别查看 <code>RHID3D11Frame.inl</code> 中的 shader-resource、UAV 和 render-target 绑定。</p>
+<ul class="reference-list">
+<li><a href="https://learn.microsoft.com/en-us/windows/win32/direct3d11/overviews-direct3d-11-resources-intro">Introduction to Resources in Direct3D 11</a><br><span class="reference-note">资源、view、bind flag 和 usage 的总体模型。用于审核 RHI memory usage 与 D3D11 resource 描述的映射。</span></li>
+<li><a href="https://learn.microsoft.com/en-us/windows/win32/direct3d11/overviews-direct3d-11-render-targets">Introduction to Render Targets in Direct3D 11</a><br><span class="reference-note">render target、depth-stencil 和 view 的使用边界，适合阅读 OMSetRenderTargets 路径前查阅。</span></li>
+<li><a href="https://learn.microsoft.com/en-us/windows/win32/direct3d11/overviews-direct3d-11-render-multi-thread-render">Introduction to Multithreading in Direct3D 11</a><br><span class="reference-note">immediate/deferred context 的职责和多线程录制模型；当前后端只走 immediate context。</span></li>
+<li><a href="https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11device-create-deferredcontext">ID3D11Device::CreateDeferredContext</a>，<a href="https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-finishcommandlist">ID3D11DeviceContext::FinishCommandList</a><br><span class="reference-note">deferred context 的 API 层生命周期。用于区分“可选并行录制能力”和仓库现在的实际路径。</span></li>
+<li><a href="https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ne-d3d11-d3d11_usage">D3D11_USAGE</a>，<a href="https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ne-d3d11-d3d11_cpu_access_flag">D3D11_CPU_ACCESS_FLAG</a><br><span class="reference-note">DEFAULT/DYNAMIC/STAGING 与 CPU map 权限的组合约束。对应 <code>toD3DUsage</code>。</span></li>
+<li><a href="https://learn.microsoft.com/en-us/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-omsetrendertargets">ID3D11DeviceContext::OMSetRenderTargets</a><br><span class="reference-note">输出合并阶段的绑定规则及读写冲突限制。用于排查 SRV/RTV/DSV/UAV hazard。</span></li>
+<li><a href="https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-resizebuffers">IDXGISwapChain::ResizeBuffers</a><br><span class="reference-note">resize 前释放 back-buffer 引用的硬性要求。对应当前 swapchain 后续应补齐的重建路径。</span></li>
+</ul>
+
+<h2 id="d3d12">D3D12：Microsoft Learn</h2>
+<p>D3D12 把同步、资源状态、descriptor heap 和 command allocator 生命周期交回应用管理。将 <a href="d3d12.html">D3D12 后端页</a> 与这些资料一起读，可以明确区分当前实现已做的显式 transition 与尚未接入的多队列、placed resource/aliasing path。</p>
+<ul class="reference-list">
+<li><a href="https://learn.microsoft.com/en-us/windows/win32/direct3d12/command-queues-and-command-lists">Command Queues and Command Lists</a><br><span class="reference-note">queue、command allocator/list、Close/Reset/Execute 的基本关系。对应 frame 的 reset/record/submit 生命周期。</span></li>
+<li><a href="https://learn.microsoft.com/en-us/windows/win32/direct3d12/fences">Fences</a><br><span class="reference-note">CPU-GPU 与 GPU-GPU 同步的 fence signal/wait 模型。用于理解 internal fence 与 frames in flight。</span></li>
+<li><a href="https://learn.microsoft.com/en-us/windows/win32/direct3d12/descriptor-heaps-overview">Descriptor Heaps Overview</a><br><span class="reference-note">CPU-visible/shader-visible heap、heap switch 和 descriptor table 的约束。对应 bind set 的 CPU 到 GPU descriptor 路径。</span></li>
+<li><a href="https://learn.microsoft.com/en-us/windows/win32/direct3d12/root-signatures">Root Signatures</a><br><span class="reference-note">descriptor table、root descriptor、root constants 的 ABI 和代价。对应 pipeline layout 的 root signature 生成。</span></li>
+<li><a href="https://learn.microsoft.com/en-us/windows/win32/direct3d12/using-resource-barriers-to-synchronize-resource-states-in-direct3d-12">Using Resource Barriers to Synchronize Resource States</a><br><span class="reference-note">transition/UAV/aliasing barrier、COMMON state 与 promotion/decay。用于核对 RenderGraph state 推导。</span></li>
+<li><a href="https://learn.microsoft.com/en-us/windows/win32/direct3d12/memory-aliasing-and-data-inheritance">Memory Aliasing and Data Inheritance</a><br><span class="reference-note">placed resource 的内存重叠及 aliasing barrier。对应 graph alias slot 尚未落地为 D3D12 实体的差距。</span></li>
+<li><a href="https://learn.microsoft.com/en-us/windows/win32/direct3d12/swap-chains">Swap Chains</a>，<a href="https://learn.microsoft.com/en-us/windows/win32/api/dxgi/nf-dxgi-idxgiswapchain-resizebuffers">IDXGISwapChain::ResizeBuffers</a><br><span class="reference-note">flip model、back buffer、present 和 resize 生命周期。对应当前 FLIP_DISCARD swapchain。</span></li>
+</ul>
+
+<h2>从官方模型回到本仓库</h2>
+<ol><li>先在 <a href="rhi-definitions.html">资源与枚举</a> 明确 RHI 声明的意图，例如 sampled、storage、attachment 与 resource state。</li><li>在 <a href="render-graph.html">RenderGraph</a> 确认每个 pass 的 reads/writes、生命周期和 transition 是否完整。</li><li>针对目标后端使用本页对应的官方资料检查原生约束，再回到 <a href="vulkan.html">Vulkan</a>、<a href="d3d11.html">D3D11</a> 或 <a href="d3d12.html">D3D12</a> 判断当前代码是否已经落实。</li><li>对于未落地的能力，文档会标注“未实现”或“未接入”；不要从某 API 概念存在反推本项目的 frame 路径已经支持。</li></ol>
+</main><footer class="footer"><div class="footer-inner">依据当前工作区源码与 Vulkan Registry/Khronos Guide/Microsoft Learn 整理。源路径相对仓库根目录；最后检查日期：2026-08-13。</div></footer></body></html>

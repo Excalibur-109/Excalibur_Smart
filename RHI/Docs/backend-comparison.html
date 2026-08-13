@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>后端对比 | Excalibur RHI</title><link rel="stylesheet" href="rhi-learning.css"></head>
+<body><header class="site-header"><div class="site-header-inner"><a class="brand" href="index.html">Excalibur RHI 学习笔记</a><p class="subtitle">从抽象契约到 Vulkan、D3D11、D3D12 的实际源码路径</p><nav aria-label="主导航"><a href="index.html">总览</a><a href="rhi-definitions.html">资源与枚举</a><a href="device.html">Device</a><a href="render-graph.html">RenderGraph</a><a href="vulkan.html">Vulkan</a><a href="d3d11.html">D3D11</a><a href="d3d12.html">D3D12</a><a aria-current="page" href="backend-comparison.html">后端对比</a><a href="official-references.html">官方资料</a></nav></div></header>
+<main>
+<p class="eyebrow">Cross API map</p><h1>同一份 RHI，三种执行模型</h1><p class="lead">RHI 的价值不在于抹平所有差异，而在于把共同意图放在同一份描述中，再让后端在需要时明确暴露差异。以下对照以当前仓库实现为准。</p>
+
+<h2>对象映射</h2>
+<div class="table-wrap"><table><thead><tr><th>RHI</th><th>Vulkan</th><th>D3D11</th><th>D3D12</th></tr></thead><tbody>
+<tr><td><code>RHIBuffer</code></td><td>VkBuffer + VkDeviceMemory</td><td>ID3D11Buffer</td><td>ID3D12Resource（buffer）</td></tr>
+<tr><td><code>RHITexture</code></td><td>VkImage + VkDeviceMemory</td><td>ID3D11Texture1D/2D/3D</td><td>ID3D12Resource（texture）</td></tr>
+<tr><td><code>RHITextureView</code></td><td>VkImageView</td><td>SRV / RTV / DSV / UAV COM view</td><td>SRV / RTV / DSV / UAV descriptor</td></tr>
+<tr><td><code>RHISampler</code></td><td>VkSampler</td><td>ID3D11SamplerState</td><td>sampler heap descriptor</td></tr>
+<tr><td><code>RHIShader</code></td><td>VkShaderModule（SPIR-V）</td><td>VS/HS/DS/GS/PS/CS COM object（HLSL/DXBC）</td><td>HLSL/DXIL/DXBC bytecode（PSO 使用）</td></tr>
+<tr><td><code>RHIBindSetLayout</code></td><td>VkDescriptorSetLayout</td><td>逻辑 layout</td><td>root signature descriptor-range 输入</td></tr>
+<tr><td><code>RHIBindSet</code></td><td>VkDescriptorSet</td><td>解析后的 context bindings</td><td>CPU descriptors，录制时转 shader-visible descriptor tables</td></tr>
+<tr><td><code>RHIPipelineLayout</code></td><td>VkPipelineLayout</td><td>逻辑 layout</td><td>ID3D12RootSignature</td></tr>
+<tr><td><code>RHIPipeline</code></td><td>VkPipeline</td><td>shader + input/raster/depth/blend 等状态对象集合</td><td>ID3D12PipelineState（PSO）+ root signature</td></tr>
+<tr><td><code>RHIQueryPool</code></td><td>VkQueryPool</td><td>一组 ID3D11Query</td><td>ID3D12QueryHeap</td></tr>
+</tbody></table></div>
+
+<h2>命令与同步模型</h2>
+<div class="table-wrap"><table><thead><tr><th>问题</th><th>Vulkan</th><th>D3D11</th><th>D3D12</th></tr></thead><tbody>
+<tr><td>命令在哪里积累</td><td>显式 VkCommandBuffer</td><td>immediate context 立即记录/提交</td><td>显式 ID3D12GraphicsCommandList</td></tr>
+<tr><td>何时执行</td><td>vkQueueSubmit</td><td>context 语义隐式；Present/Flush 等驱动执行</td><td>Close 后 ExecuteCommandLists</td></tr>
+<tr><td>GPU-GPU 同步</td><td>binary/timeline VkSemaphore</td><td>当前为 CPU 状态模拟</td><td>当前 RHI 信号记录为轻量状态；命令队列使用内部 fence</td></tr>
+<tr><td>CPU-GPU 同步</td><td>VkFence 与内部 timeline frame context</td><td>D3D11 event query 语义</td><td>ID3D12Fence + Win32 event</td></tr>
+<tr><td>资源状态</td><td>显式 image layout/access/stage barrier</td><td>无显式 layout，主要靠绑定与逻辑追踪</td><td>显式 D3D12_RESOURCE_BARRIER</td></tr>
+<tr><td>当前整帧队列</td><td>graphics command buffer/queue</td><td>immediate context</td><td>graphics command list/queue</td></tr>
+</tbody></table></div>
+
+<h2>RenderGraph 到原生命令的对应</h2>
+<div class="table-wrap"><table><thead><tr><th>计划元素</th><th>Vulkan</th><th>D3D11</th><th>D3D12</th></tr></thead><tbody>
+<tr><td>resource transition</td><td>buffer/image barrier，更新 layout/access/stage</td><td>更新逻辑状态，依赖 actual context binding 顺序</td><td>D3D12_RESOURCE_BARRIER，更新 currentState</td></tr>
+<tr><td>color/depth attachment</td><td>VkRenderingAttachmentInfo + vkCmdBeginRendering</td><td>OMSetRenderTargets + RTV/DSV</td><td>OMSetRenderTargets + CPU RTV/DSV handles</td></tr>
+<tr><td>draw</td><td>BindPipeline/DescriptorSets/VertexBuffers + vkCmdDraw*</td><td>applyPipeline / applyBindSet + Draw*</td><td>SetPipelineState/RootSignature/Tables/IA + Draw*</td></tr>
+<tr><td>dispatch</td><td>Bind compute pipeline/set + vkCmdDispatch</td><td>CS shader/resource binding + Dispatch</td><td>SetComputeRootSignature/tables + Dispatch</td></tr>
+<tr><td>present</td><td>vkQueuePresentKHR</td><td>IDXGISwapChain::Present</td><td>IDXGISwapChain::Present</td></tr>
+</tbody></table></div>
+
+<h2>当前功能矩阵</h2>
+<div class="table-wrap"><table><thead><tr><th>功能</th><th>Vulkan</th><th>D3D11</th><th>D3D12</th></tr></thead><tbody>
+<tr><td>Buffer/Texture/View/Sampler</td><td><span class="label ok">实现</span></td><td><span class="label ok">实现</span></td><td><span class="label ok">实现</span></td></tr>
+<tr><td>Shader 输入</td><td>SPIR-V bytecode/file</td><td>HLSL source/file 或 DXBC</td><td>HLSL source/file 或 DXIL/DXBC</td></tr>
+<tr><td>Graphics/Compute pipeline</td><td><span class="label ok">实现</span> dynamic rendering</td><td><span class="label ok">实现</span> 状态组合</td><td><span class="label ok">实现</span> RootSignature + PSO</td></tr>
+<tr><td>Swapchain</td><td><span class="label ok">实现</span> surface 必需</td><td><span class="label ok">实现</span> 单 back buffer 包装</td><td><span class="label ok">实现</span> flip-discard 多 buffer</td></tr>
+<tr><td>graph uploads/buffer copy/draw/dispatch</td><td><span class="label ok">实现</span></td><td><span class="label ok">实现</span></td><td><span class="label ok">实现</span></td></tr>
+<tr><td>graph query workload</td><td><span class="label missing">未实现</span></td><td><span class="label missing">未实现</span></td><td><span class="label missing">未实现</span></td></tr>
+<tr><td>graph indirect workload</td><td><span class="label missing">未实现</span></td><td><span class="label missing">未实现</span></td><td><span class="label missing">未实现</span></td></tr>
+<tr><td>graph texture copy/blit/mipmap</td><td><span class="label missing">未实现</span></td><td><span class="label missing">未实现</span></td><td><span class="label missing">高级操作未实现</span></td></tr>
+<tr><td>RenderGraph 多队列并发</td><td><span class="label limit">未接入帧路径</span></td><td><span class="label limit">单 context</span></td><td><span class="label limit">未接入帧路径</span></td></tr>
+<tr><td>当前 CMake 编译后端 .cpp</td><td><span class="label missing">否</span></td><td><span class="label missing">否</span></td><td><span class="label missing">否</span></td></tr>
+</tbody></table></div>
+
+<h2>如何做正确的跨 API 设计</h2>
+<ol><li>将资源用途写在 <code>usage</code>，将每个 pass 的访问写在 <code>reads/writes</code>，不要把某 API 的 layout/descriptor heap 细节上浮到业务层。</li><li>每帧根据 <code>RHICapabilities</code> 选择 feature 路径；不要仅因为枚举存在就假设当前设备和后端都实现了它。</li><li>在 D3D11 路径特别检查资源读写冲突和状态清理，因为它是隐式状态机；在 Vulkan/D3D12 路径特别检查 state/barrier 和命令提交顺序。</li><li>把“对象可创建”和“workload 已可录制”分开测试。query pool 存在并不表示 query command 已进入 frame 路径。</li><li>处理失败时读取 <code>errorMessage</code> 或异常文本；这些实现对不支持路径多数会明确报错，而不是静默跳过。</li></ol>
+
+<h2>官方模型差异：RHI 不能抹掉的部分</h2>
+<div class="table-wrap"><table><thead><tr><th>主题</th><th>Vulkan 官方模型</th><th>D3D11 官方模型</th><th>D3D12 官方模型</th><th>对 RHI 的含义</th></tr></thead><tbody>
+<tr><td>资源状态</td><td>显式 stage/access/layout 与 queue ownership</td><td>无公开 layout，运行时处理绑定冲突</td><td>显式 resource states 与 barrier</td><td><code>RHIResourceState</code> 可统一意图，但 D3D11 后端仍需解绑 hazard。</td></tr>
+<tr><td>描述符</td><td>layout + pool + descriptor set</td><td>直接绑到各 shader stage/slot</td><td>descriptor heap + root signature/table</td><td><code>RHIBindSet</code> 应只描述资源关系，后端保留各自分配、复制与绑定时机。</td></tr>
+<tr><td>命令执行</td><td>command buffer 显式提交 queue</td><td>immediate context；可选 deferred context</td><td>allocator/list close 后显式执行 queue</td><td>统一 frame packet 不能假设三者都支持相同并行录制方式。</td></tr>
+<tr><td>同步</td><td>fence、binary/timeline semaphore</td><td>query/driver 的隐式执行模型</td><td>fence 与 queue signal/wait</td><td>RHI signal 的语义应说明是 CPU wait、GPU wait 还是仅逻辑占位。</td></tr>
+<tr><td>内存别名</td><td>同一 allocation 的 bind 与严格生命周期同步</td><td>驱动管理内存，不暴露 placed-resource 模型</td><td>placed resource + aliasing barrier</td><td>RenderGraph alias slot 只是计划；必须由 Vulkan/D3D12 后端落实才节省显存。</td></tr>
+<tr><td>呈现与 resize</td><td>acquire/present、out-of-date/suboptimal</td><td>DXGI buffer 引用释放后 ResizeBuffers</td><td>DXGI flip model，亦需释放旧 back buffer</td><td>Swapchain 重建必须成为独立生命周期流程，不能只重建尺寸字段。</td></tr>
+</tbody></table></div>
+<p>因此，跨 API 的“正确”不是把所有后端强行伪装成同一条命令序列，而是统一资源意图、pass 依赖和能力查询，并在边界处保留同步、状态、descriptor 与呈现的原生规则。官方链接与适用范围见 <a href="official-references.html">官方资料</a>。</p>
+
+<h2>下一步阅读</h2><p>先在 <a href="rhi-definitions.html">资源与枚举</a> 中建立术语，再选择 <a href="vulkan.html">Vulkan</a>、<a href="d3d11.html">D3D11</a> 或 <a href="d3d12.html">D3D12</a> 深入。对于“为什么需要 graph 自动 transition”，回到 <a href="render-graph.html">RenderGraph</a> 页看编译计划。</p>
+</main><footer class="footer"><div class="footer-inner">依据当前工作区源码整理。源路径相对仓库根目录；最后检查日期：2026-08-13。</div></footer></body></html>
