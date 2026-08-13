@@ -1603,14 +1603,14 @@ struct RHIRenderPassWorkload {
     std::vector<RHIDispatchIndirectCommand> indirectDispatches;
 };
 
-enum class RHIGPUWaitCPUSignalType : u8 {
+enum class RHIGPUWaitGPUSignalType : u8 {
     Binary,
     Timeline
 };
 
 struct RHIGPUWaitGPUSignalDesc {
     std::string debugName;
-    RHIGPUWaitCPUSignalType type = RHIGPUWaitCPUSignalType::Binary;
+    RHIGPUWaitGPUSignalType type = RHIGPUWaitGPUSignalType::Binary;
     u64 initialValue = 0;
 };
 
@@ -1835,9 +1835,9 @@ struct RHIFrameRenderSettings {
 struct RHIFramePacket {
     RHIFrameRenderSettings settings{};              ///< 当前帧设置。
     RHISwapchainDesc swapchain{};                   ///< 当前帧目标 swapchain 需求。
-    RHIUploadBatchDesc upload{};                    ///< 本帧开始前需要执行的资源上传。
+    RHIUploadBatchDesc uploads{};                   ///< 本帧开始前需要执行的资源上传。
     RHIRenderCameraSetDesc cameras{};               ///< 相机输入，和物体/光源解耦。
-    RHISceneEnvironmentDesc environment{};            ///< 场景环境和后处理基础参数。
+    RHISceneEnvironmentDesc environment{};          ///< 场景环境和后处理基础参数。
     RHIRenderLightSetDesc lights{};                 ///< 光源输入，和物体/相机解耦。
     RHIRenderObjectSetDesc objects{};               ///< 可渲染物体输入，和相机/光源解耦。
     RHIRenderGraphDesc graph{};                     ///< pass 和资源依赖图。

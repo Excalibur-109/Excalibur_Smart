@@ -59,9 +59,6 @@ RHIBuffer RHIVulkan::CreateBuffer(const RHIBufferDesc& desc) {
     return handle;
 }
 
-// Texture 对应 VkImage。注意 VkImage 只是“存储和布局状态”，真正给 shader 或 render pass
-// 使用时还需要 VkImageView；因此 CreateTexture 只负责 image + memory，CreateTextureView
-// 才负责 format/aspect/mip/layer 这些访问窗口。
 RHITexture RHIVulkan::CreateTexture(const RHITextureDesc& desc) {
     if (!IsInitialized()) {
         throw std::runtime_error("RHIVulkan is not initialized");
