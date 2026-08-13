@@ -87,59 +87,24 @@ struct RHICPUWaitGPUSignalTag   {};
 struct RHIMeshTag               {};
 struct RHIMaterialTag           {};
 
-/// GPU buffer 资源，例如顶点、索引、uniform、storage、上传 staging buffer。
-using RHIBuffer = RHIHandle<RHIBufferTag>;
-
-/// GPU texture/image 资源，例如贴图、渲染目标、深度缓冲、swapchain image。
-using RHITexture = RHIHandle<RHITextureTag>;
-
-/// texture 的视图，描述 mip/layer/维度/格式重解释。
-using RHITextureView = RHIHandle<RHITextureViewTag>;
-
-/// 采样器状态对象，描述过滤、寻址、各向异性和比较采样。
-using RHISampler = RHIHandle<RHISamplerTag>;
-
-/// 着色器对象或着色器模块。
-using RHIShader = RHIHandle<RHIShaderTag>;
-
-/// 资源绑定布局集合，对应 Vulkan pipeline layout / D3D root signature / Metal argument layout。
-using RHIPipelineLayout = RHIHandle<RHIPipelineLayoutTag>;
-
-/// 图形或计算管线对象。
-using RHIPipeline = RHIHandle<RHIPipelineTag>;
-
-/// 渲染通道对象；在现代后端中也可以只是动态渲染/附件配置的缓存 key。
-using RHIRenderPass = RHIHandle<RHIRenderPassTag>;
-
-/// framebuffer 或一组绑定到 render pass 的附件视图。
-using RHIFramebuffer = RHIHandle<RHIFramebufferTag>;
-
-/// swapchain 对象句柄，表示窗口后备缓冲队列。
-using RHISwapchain = RHIHandle<RHISwapchainTag>;
-
-/// 一组资源槽位的布局，对应 Vulkan descriptor set layout / D3D descriptor table。
-using RHIBindSetLayout = RHIHandle<RHIBindSetLayoutTag>;
-
-/// 一组实际绑定资源，对应 Vulkan descriptor set / D3D descriptor heap 区间 / Metal argument buffer。
-using RHIBindSet = RHIHandle<RHIBindSetTag>;
-
-/// GPU 查询池句柄，例如 timestamp、occlusion、pipeline statistics。
-using RHIQueryPool = RHIHandle<RHIQueryPoolTag>;
-
-/// 管线缓存句柄，用于复用后端 pipeline 编译结果。
-using RHIPipelineCache = RHIHandle<RHIPipelineCacheTag>;
-
-/// GPU 等待 GPU 的同步信号；Vulkan 映射为 binary/timeline semaphore。
-using RHIGPUWaitGPUSignal = RHIHandle<RHIGPUWaitGPUSignalTag>;
-
-/// CPU 等待 GPU 完成的同步信号；Vulkan 映射为 fence。
-using RHICPUWaitGPUSignal = RHIHandle<RHICPUWaitGPUSignalTag>;
-
-/// 引擎层 mesh 资源句柄。
-using RHIMesh = RHIHandle<RHIMeshTag>;
-
-/// 引擎层 material 资源句柄。
-using RHIMaterial = RHIHandle<RHIMaterialTag>;
+using RHIBuffer             = RHIHandle<RHIBufferTag>;              ///< GPU buffer 资源，例如顶点、索引、uniform、storage、上传 staging buffer。
+using RHITexture            = RHIHandle<RHITextureTag>;             ///< GPU texture/image 资源，例如贴图、渲染目标、深度缓冲、swapchain image。
+using RHITextureView        = RHIHandle<RHITextureViewTag>;         ///< texture 的视图，描述 mip/layer/维度/格式重解释。
+using RHISampler            = RHIHandle<RHISamplerTag>;             ///< 采样器状态对象，描述过滤、寻址、各向异性和比较采样。
+using RHIShader             = RHIHandle<RHIShaderTag>;              ///< 着色器对象或着色器模块。
+using RHIPipelineLayout     = RHIHandle<RHIPipelineLayoutTag>;      ///< 资源绑定布局集合，对应 Vulkan pipeline layout / D3D root signature / Metal argument layout。
+using RHIPipeline           = RHIHandle<RHIPipelineTag>;            ///< 图形或计算管线对象。
+using RHIRenderPass         = RHIHandle<RHIRenderPassTag>;          ///< 渲染通道对象；在现代后端中也可以只是动态渲染/附件配置的缓存 key。
+using RHIFramebuffer        = RHIHandle<RHIFramebufferTag>;         ///< framebuffer 或一组绑定到 render pass 的附件视图。
+using RHISwapchain          = RHIHandle<RHISwapchainTag>;           ///< swapchain 对象句柄，表示窗口后备缓冲队列。
+using RHIBindSetLayout      = RHIHandle<RHIBindSetLayoutTag>;       ///< 一组资源槽位的布局，对应 Vulkan descriptor set layout / D3D descriptor table。
+using RHIBindSet            = RHIHandle<RHIBindSetTag>;             ///< 一组实际绑定资源，对应 Vulkan descriptor set / D3D descriptor heap 区间 / Metal argument buffer。
+using RHIQueryPool          = RHIHandle<RHIQueryPoolTag>;           ///< GPU 查询池句柄，例如 timestamp、occlusion、pipeline statistics。
+using RHIPipelineCache      = RHIHandle<RHIPipelineCacheTag>;       ///< 管线缓存句柄，用于复用后端 pipeline 编译结果。
+using RHIGPUWaitGPUSignal   = RHIHandle<RHIGPUWaitGPUSignalTag>;    ///< GPU 等待 GPU 的同步信号；Vulkan 映射为 binary/timeline semaphore。
+using RHICPUWaitGPUSignal   = RHIHandle<RHICPUWaitGPUSignalTag>;    ///< CPU 等待 GPU 完成的同步信号；Vulkan 映射为 fence。
+using RHIMesh               = RHIHandle<RHIMeshTag>;                ///< 引擎层 mesh 资源句柄。
+using RHIMaterial           = RHIHandle<RHIMaterialTag>;            ///< 引擎层 material 资源句柄。
 
 template <typename Enum>
 [[nodiscard]] constexpr auto RHIEnumToUnderlying(Enum value) noexcept {
