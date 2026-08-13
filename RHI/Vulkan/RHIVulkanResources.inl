@@ -1,8 +1,8 @@
-#pragma once
+﻿#pragma once
 
 #include "RHIVulkanPrivate.inl"
 
-namespace RHI {
+namespace rhi {
 
 RHIBuffer RHIVulkan::CreateBuffer(const RHIBufferDesc& desc) {
     if (!IsInitialized()) {
@@ -40,6 +40,7 @@ RHIBuffer RHIVulkan::CreateBuffer(const RHIBufferDesc& desc) {
         vkDestroyBuffer(impl_->native.device, resource.buffer, nullptr);
         throw std::runtime_error("vkAllocateMemory(buffer) failed");
     }
+    // 创建对象和分配内存只是两步准备；绑定成功后，buffer 才真正拥有可访问的存储。
     if (vkBindBufferMemory(impl_->native.device, resource.buffer, resource.memory, 0) != VK_SUCCESS) {
         vkDestroyBuffer(impl_->native.device, resource.buffer, nullptr);
         vkFreeMemory(impl_->native.device, resource.memory, nullptr);
@@ -59,6 +60,9 @@ RHIBuffer RHIVulkan::CreateBuffer(const RHIBufferDesc& desc) {
     return handle;
 }
 
+// Texture 对应 VkImage。注意 VkImage 只是“存储和布局状态”，真正给 shader 或 render pass
+// 使用时还需要 VkImageView；因此 CreateTexture 只负责 image + memory，CreateTextureView
+// 才负责 format/aspect/mip/layer 这些访问窗口。
 RHITexture RHIVulkan::CreateTexture(const RHITextureDesc& desc) {
     if (!IsInitialized()) {
         throw std::runtime_error("RHIVulkan is not initialized");
@@ -423,4 +427,14 @@ RHIPipelineCache RHIVulkan::CreatePipelineCache(const RHIPipelineCacheDesc& desc
     return handle;
 }
 
-} // namespace RHI
+} // namespace rhi
+
+
+
+
+
+
+
+
+
+

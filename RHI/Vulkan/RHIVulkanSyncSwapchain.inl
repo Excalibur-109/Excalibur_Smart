@@ -1,8 +1,8 @@
-#pragma once
+﻿#pragma once
 
 #include "RHIVulkanPrivate.inl"
 
-namespace RHI {
+namespace rhi {
 
 RHIQueryPool RHIVulkan::CreateQueryPool(const RHIQueryPoolDesc& desc) {
     Impl::QueryPoolResource resource{};
@@ -115,8 +115,8 @@ RHISwapchain RHIVulkan::CreateSwapchain(const RHISwapchainDesc& desc) {
     }
 
     const VkSurfaceFormatKHR            selectedFormat       = chooseSwapchainFormat(support, desc);
-    const RHIFormat                     selectedEngineFormat = fromVkFormat(selectedFormat.format);
-    const RHIFormat                     swapchainFormat      = selectedEngineFormat == RHIFormat::Undefined ? desc.preferredFormat : selectedEngineFormat;
+    const RHIFormat                        selectedEngineFormat = fromVkFormat(selectedFormat.format);
+    const RHIFormat                        swapchainFormat      = selectedEngineFormat == RHIFormat::Undefined ? desc.preferredFormat : selectedEngineFormat;
     const VkPresentModeKHR              selectedPresentMode  = chooseSwapchainPresentMode(support, desc.presentMode);
     const VkExtent2D                    extent               = chooseSwapchainExtent(support, desc.extent);
     const u32                           imageCount           = chooseSwapchainImageCount(support, desc.imageCount);
@@ -400,7 +400,7 @@ bool RHIVulkan::Present(const RHIPresentDesc& desc, std::string* errorMessage) {
 // CommandBuffer/Fence 由 FrameContext 按 framesInFlight 轮转复用；CPU 只等待即将复用的
 // 帧槽位，而不是每次提交后立刻等待整帧完成。
 
-} // namespace RHI
+} // namespace rhi
 
 
 

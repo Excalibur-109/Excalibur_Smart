@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "RHIVulkan.hpp"
 
@@ -14,14 +14,25 @@
 #include <unordered_set>
 #include <utility>
 
-namespace RHI {
+namespace rhi {
 
+// 学习导读：
+// 这个文件是统一渲染抽象到 Vulkan 的落地层。RHIDefinitions.hpp 里的 RHIBufferDesc、
+// RHITextureDesc、PipelineDesc、RHIFramePacket 等结构只描述“引擎想要什么”；这里负责把它们
+// 翻译成 VkBuffer/VkImage/VkDescriptorSet/VkPipeline/VkCommandBuffer 等 Vulkan 对象。
+//
+// Vulkan 是显式 API：资源内存、资源状态、同步和命令录制都要由引擎明确处理。因此读这个
+// 文件时可以按“创建设备 -> 创建资源 -> 创建绑定/管线 -> 录制命令 -> 提交/呈现 -> 销毁”
+// 的顺序理解，而不是把它看成一组互不相关的函数。
+
+/// Vulkan 资源句柄使用 1-based index；0 保持为无效句柄。
 template <typename HandleT, typename ResourceT>
 static HandleT makeRenderHandle(std::vector<ResourceT>& resources, ResourceT&& resource) {
     resources.push_back(std::move(resource));
     return HandleT(static_cast<u64>(resources.size()));
 }
 
+/// 根据引擎句柄查找资源；无效句柄或越界时返回 nullptr。
 template <typename ResourceT, typename HandleT>
 static ResourceT* getRenderResource(std::vector<ResourceT>& resources, HandleT handle) {
     if (!handle || handle.value == 0 || handle.value > resources.size()) {
@@ -30,6 +41,7 @@ static ResourceT* getRenderResource(std::vector<ResourceT>& resources, HandleT h
     return &resources[static_cast<size_t>(handle.value - 1)];
 }
 
+/// const 版本资源查找。
 template <typename ResourceT, typename HandleT>
 static const ResourceT* getRenderResource(const std::vector<ResourceT>& resources, HandleT handle) {
     if (!handle || handle.value == 0 || handle.value > resources.size()) {
@@ -38,6 +50,7 @@ static const ResourceT* getRenderResource(const std::vector<ResourceT>& resource
     return &resources[static_cast<size_t>(handle.value - 1)];
 }
 
+/// Vulkan 调试回调只输出到标准错误流；引擎层可以之后替换成日志系统。
 static VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(
     VkDebugUtilsMessageSeverityFlagBitsEXT,
     VkDebugUtilsMessageTypeFlagsEXT,
@@ -49,21 +62,26 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL vulkanDebugCallback(
     return VK_FALSE;
 }
 
+/// 读取 shader bytecode 文件；Vulkan shader module 期望 SPIR-V 字节码。
 static std::vector<std::byte> readBinaryFile(const std::string& path) {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file.is_open()) {
         throw std::runtime_error("Failed to open shader file: " + path);
     }
+
     const std::streamsize size = file.tellg();
     if (size <= 0) {
         return {};
     }
+
     std::vector<std::byte> data(static_cast<size_t>(size));
     file.seekg(0, std::ios::beg);
     file.read(reinterpret_cast<char*>(data.data()), size);
     return data;
 }
 
+// 统一 RHIFormat 到 VkFormat 的映射层。引擎其它模块只依赖 RHIDefinitions.hpp 中的
+// RHIFormat 枚举，后端在边界处一次性转换成 native enum，这样上层不会散落 Vulkan 类型。
 static VkFormat toVkFormat(RHIFormat format) {
     switch (format) {
     case RHIFormat::Undefined:         return VK_FORMAT_UNDEFINED;
@@ -137,6 +155,7 @@ static VkFormat toVkFormat(RHIFormat format) {
     return VK_FORMAT_UNDEFINED;
 }
 
+/// 把 swapchain 实际选到的 Vulkan format 转回通用 RHIFormat，保证上层拿到的 texture 描述与真实后备缓冲一致。
 static RHIFormat fromVkFormat(VkFormat format) {
     switch (format) {
     case VK_FORMAT_R8_UNORM:                  return RHIFormat::R8_UNorm;
@@ -505,7 +524,7 @@ static VkColorComponentFlags toVkColorWriteMask(RHIColorWriteMask mask) {
 
 static VkDynamicState toVkDynamicState(RHIDynamicState state) {
     switch (state) {
-    case RHIDynamicState::Viewport:         return VK_DYNAMIC_STATE_VIEWPORT;
+    case RHIDynamicState::RHIViewport:         return VK_DYNAMIC_STATE_VIEWPORT;
     case RHIDynamicState::Scissor:          return VK_DYNAMIC_STATE_SCISSOR;
     case RHIDynamicState::LineWidth:        return VK_DYNAMIC_STATE_LINE_WIDTH;
     case RHIDynamicState::DepthBias:        return VK_DYNAMIC_STATE_DEPTH_BIAS;
@@ -685,6 +704,7 @@ static VkDeviceSize toVkWholeSize(u64 size) {
     return size == RHI_WHOLE_SIZE ? VK_WHOLE_SIZE : static_cast<VkDeviceSize>(size);
 }
 
+/// 记录每类 Vulkan 队列对应的 queue family index。
 struct VulkanQueueFamilies {
     u32 graphics = RHI_INVALID_INDEX;  ///< 图形队列族，必须支持 VK_QUEUE_GRAPHICS_BIT。
     u32 compute = RHI_INVALID_INDEX;   ///< 计算队列族，优先选择独立 compute 队列。
@@ -692,21 +712,30 @@ struct VulkanQueueFamilies {
     u32 present = RHI_INVALID_INDEX;   ///< 呈现队列族，需要 surface 支持。
 };
 
+// Impl 是 RHIVulkan 的后端状态仓库。
+// 公共 API 对外只暴露轻量 RHIHandle，RHIHandle 实际上是这些 vector 的 1-based 索引；真实的
+// Vulkan 对象、创建时的描述信息、是否拥有对象生命周期等都集中保存在这里。这样上层可以
+// 用统一句柄表达依赖关系，后端仍能拿到 native 对象执行命令。
 struct RHIVulkan::Impl {
     struct StagingResource {
         VkBuffer buffer = VK_NULL_HANDLE;
         VkDeviceMemory memory = VK_NULL_HANDLE;
     };
+
+    /// 一组可重复使用的逐帧资源。completionValue 是全局 frame timeline 上的值：
+    /// GPU 完成该帧提交时 signal，CPU 复用此槽位前通过 vkWaitSemaphores 等待。
     struct FrameContext {
         VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
         std::vector<StagingResource> stagingResources;
         u64 completionValue = 0;
-        b8 prepared = false;
+        bool prepared = false;
     };
+
     struct DeferredRelease {
         u64 retireAfterSerial = 0;
         std::function<void()> release;
     };
+
     struct BufferResource {
         RHIBufferDesc desc{};
         VkBuffer buffer = VK_NULL_HANDLE;
@@ -716,6 +745,7 @@ struct RHIVulkan::Impl {
         VkPipelineStageFlags currentStages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         VkAccessFlags currentAccess = 0;
     };
+
     struct TextureResource {
         RHITextureDesc desc{};
         VkImage image = VK_NULL_HANDLE;
@@ -723,53 +753,65 @@ struct RHIVulkan::Impl {
         RHIResourceState currentState = RHIResourceState::Undefined;
         VkPipelineStageFlags currentStages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
         VkAccessFlags currentAccess = 0;
-        b8 ownsImage = true;
+        bool ownsImage = true;
     };
+
     struct TextureViewResource {
         RHITextureViewDesc desc{};
         VkImageView view = VK_NULL_HANDLE;
     };
+
     struct SamplerResource {
         RHISamplerDesc desc{};
         VkSampler sampler = VK_NULL_HANDLE;
     };
+
     struct ShaderResource {
         RHIShaderDesc desc{};
         VkShaderModule module = VK_NULL_HANDLE;
     };
+
     struct BindSetLayoutResource {
         RHIBindSetLayoutDesc desc{};
         VkDescriptorSetLayout layout = VK_NULL_HANDLE;
     };
+
     struct BindSetResource {
         RHIBindSetDesc desc{};
         VkDescriptorSet set = VK_NULL_HANDLE;
     };
+
     struct PipelineLayoutResource {
         RHIPipelineLayoutDesc desc{};
         VkPipelineLayout layout = VK_NULL_HANDLE;
     };
+
     struct PipelineResource {
         VkPipeline pipeline = VK_NULL_HANDLE;
         VkPipelineLayout layout = VK_NULL_HANDLE;
         VkPipelineBindPoint bindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     };
+
     struct PipelineCacheResource {
         RHIPipelineCacheDesc desc{};
         VkPipelineCache cache = VK_NULL_HANDLE;
     };
+
     struct QueryPoolResource {
         RHIQueryPoolDesc desc{};
         VkQueryPool pool = VK_NULL_HANDLE;
     };
+
     struct GPUWaitGPUSignalResource {
         RHIGPUWaitGPUSignalDesc desc{};
         VkSemaphore semaphore = VK_NULL_HANDLE;
     };
+
     struct CPUWaitGPUSignalResource {
         RHICPUWaitGPUSignalDesc desc{};
         VkFence fence = VK_NULL_HANDLE;
     };
+
     struct SwapchainResource {
         RHISwapchainDesc desc{};
         VkSwapchainKHR swapchain = VK_NULL_HANDLE;
@@ -789,15 +831,15 @@ struct RHIVulkan::Impl {
     VkCommandPool graphicsCommandPool = VK_NULL_HANDLE;
     VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
     VkSemaphore frameTimelineSemaphore = VK_NULL_HANDLE;
-    b8 ownsSurface = false;
-    b8 supportsTimelineSemaphore = false;
+    bool ownsSurface = false;
+    bool supportsTimelineSemaphore = false;
     std::vector<FrameContext> frameContexts;
     u32 nextFrameContext = 0;
     u64 lastSubmissionSerial = 0;
     u64 completedSubmissionSerial = 0;
     std::vector<DeferredRelease> deferredReleases;
-    b8 hasUntrackedSubmissions = false;
-    b8 deviceKnownIdle = true;
+    bool hasUntrackedSubmissions = false;
+    bool deviceKnownIdle = true;
 
     std::vector<BufferResource> buffers;
     std::vector<TextureResource> textures;
@@ -832,8 +874,7 @@ struct RHIVulkan::Impl {
             if (release->retireAfterSerial <= completedSubmissionSerial) {
                 release->release();
                 release = deferredReleases.erase(release);
-            }
-            else {
+            } else {
                 ++release;
             }
         }
@@ -857,16 +898,19 @@ struct RHIVulkan::Impl {
             release();
             return;
         }
+
         if (lastSubmissionSerial <= completedSubmissionSerial) {
             release();
             return;
         }
+
         try {
             deferredReleases.push_back({
                 lastSubmissionSerial,
                 std::forward<Release>(release)});
-        }
-        catch (...) {
+        } catch (...) {
+            // Destroy 是 noexcept。内存不足时选择等待设备并立即安全释放，不能让异常
+            // 穿过 noexcept，也不能在 GPU 仍使用对象时提前销毁。
             vkDeviceWaitIdle(native.device);
             completedSubmissionSerial = lastSubmissionSerial;
             deviceKnownIdle = true;
@@ -879,26 +923,35 @@ struct RHIVulkan::Impl {
         if (frameContexts.empty()) {
             throw std::runtime_error("RHIVulkan has no frame contexts");
         }
+
         FrameContext& frame = frameContexts[nextFrameContext];
         if (frame.prepared) {
             return frame;
         }
+
         if (frame.completionValue != 0) {
             VkSemaphoreWaitInfo waitInfo{};
             waitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
             waitInfo.semaphoreCount = 1;
-            waitInfo.pSemaphores= &frameTimelineSemaphore;
+            waitInfo.pSemaphores = &frameTimelineSemaphore;
             waitInfo.pValues = &frame.completionValue;
-            if (vkWaitSemaphores(native.device, &waitInfo, std::numeric_limits<u64>::max()) != VK_SUCCESS) {
+            if (vkWaitSemaphores(
+                    native.device,
+                    &waitInfo,
+                    std::numeric_limits<u64>::max()) != VK_SUCCESS) {
                 throw std::runtime_error("Failed to wait for the Vulkan frame timeline");
             }
         }
-        completedSubmissionSerial = std::max(completedSubmissionSerial, frame.completionValue);
+
+        completedSubmissionSerial =
+            std::max(completedSubmissionSerial, frame.completionValue);
         releaseStagingResources(frame);
         collectDeferredReleases();
+
         if (vkResetCommandBuffer(frame.commandBuffer, 0) != VK_SUCCESS) {
             throw std::runtime_error("Failed to reset the Vulkan frame command buffer");
         }
+
         frame.prepared = true;
         return frame;
     }
@@ -919,9 +972,9 @@ struct RHIVulkan::Impl {
         VkPhysicalDeviceMemoryProperties memoryProperties{};
         vkGetPhysicalDeviceMemoryProperties(native.physicalDevice, &memoryProperties);
         for (u32 index = 0; index < memoryProperties.memoryTypeCount; ++index) {
-            const b8 typeMatches = (typeBits & (1u << index)) != 0;
-            const b8 flagsMatches = (memoryProperties.memoryTypes[index].propertyFlags & properties) == properties;
-            if (typeMatches && flagsMatches) {
+            const bool typeMatches = (typeBits & (1u << index)) != 0;
+            const bool flagsMatch = (memoryProperties.memoryTypes[index].propertyFlags & properties) == properties;
+            if (typeMatches && flagsMatch) {
                 return index;
             }
         }
@@ -930,27 +983,28 @@ struct RHIVulkan::Impl {
 
     VkQueue queueForType(RHIQueueType type) const {
         switch (type) {
-            case RHIQueueType::Graphics: return native.graphicsQueue;
-            case RHIQueueType::Compute: return native.computeQueue;
-            case RHIQueueType::Transfer: return native.transferQueue != VK_NULL_HANDLE ? native.transferQueue : native.graphicsQueue;
-            case RHIQueueType::Present: return native.presentQueue != VK_NULL_HANDLE ? native.presentQueue : native.graphicsQueue;
+        case RHIQueueType::Graphics: return native.graphicsQueue;
+        case RHIQueueType::Compute:  return native.computeQueue;
+        case RHIQueueType::Transfer: return native.transferQueue != VK_NULL_HANDLE ? native.transferQueue : native.graphicsQueue;
+        case RHIQueueType::Present:  return native.presentQueue != VK_NULL_HANDLE ? native.presentQueue : native.graphicsQueue;
         }
         return native.graphicsQueue;
     }
-}; // RHIVulkan::Impl
+};
 
-static b8 hasLayer(const std::vector<VkLayerProperties>& layers, const char* name) {
-    return std::any_of(layers.begin(), layers.end(), [name](const VkLayerProperties layer) {
+static bool hasLayer(const std::vector<VkLayerProperties>& layers, const char* name) {
+    return std::any_of(layers.begin(), layers.end(), [name](const VkLayerProperties& layer) {
         return std::strcmp(layer.layerName, name) == 0;
     });
 }
 
-static b8 hasExtension(const std::vector<VkExtensionProperties>& extensions, const char* name) {
+static bool hasExtension(const std::vector<VkExtensionProperties>& extensions, const char* name) {
     return std::any_of(extensions.begin(), extensions.end(), [name](const VkExtensionProperties& extension) {
         return std::strcmp(extension.extensionName, name) == 0;
     });
 }
 
+/// Vulkan 创建信息不应该包含重复扩展名，这里按字符串内容做去重追加。
 static void appendUniqueExtension(std::vector<const char*>& extensions, const char* name) {
     const auto exists = std::any_of(extensions.begin(), extensions.end(), [name](const char* existing) {
         return std::strcmp(existing, name) == 0;
@@ -960,7 +1014,7 @@ static void appendUniqueExtension(std::vector<const char*>& extensions, const ch
     }
 }
 
-static std::vector<VkLayerProperties> enumerateInstanceLayer() {
+static std::vector<VkLayerProperties> enumerateInstanceLayers() {
     u32 count = 0;
     vkEnumerateInstanceLayerProperties(&count, nullptr);
     std::vector<VkLayerProperties> layers(count);
@@ -990,6 +1044,8 @@ static std::vector<VkExtensionProperties> enumerateDeviceExtensions(VkPhysicalDe
     return extensions;
 }
 
+/// 参考 Vulkan-Tutorial simple_engine 的 SwapChainSupportDetails：
+/// surface 能力必须集中查询，物理设备筛选和真正 CreateSwapchain 时都应该用同一套结果语义。
 struct VulkanSwapchainSupport {
     VkSurfaceCapabilitiesKHR        capabilities{};
     std::vector<VkSurfaceFormatKHR> formats;
@@ -997,9 +1053,10 @@ struct VulkanSwapchainSupport {
     VkResult                        capabilitiesResult = VK_ERROR_INITIALIZATION_FAILED;
     VkResult                        formatsResult      = VK_ERROR_INITIALIZATION_FAILED;
     VkResult                        presentModesResult = VK_ERROR_INITIALIZATION_FAILED;
+
     bool isUsable() const {
         return capabilitiesResult == VK_SUCCESS && formatsResult == VK_SUCCESS && presentModesResult == VK_SUCCESS &&
-            !formats.empty() && !presentModes.empty();
+               !formats.empty() && !presentModes.empty();
     }
 };
 
@@ -1008,10 +1065,14 @@ static VulkanSwapchainSupport querySwapchainSupport(VkPhysicalDevice device, VkS
     if (surface == VK_NULL_HANDLE) {
         return support;
     }
+
+    // WSI 查询函数也会返回 VkResult。驱动、surface 生命周期或窗口系统异常时，
+    // 不能把“空数组”误认为正常能力；设备筛选和 swapchain 创建会统一拒绝失败结果。
     support.capabilitiesResult = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &support.capabilities);
     if (support.capabilitiesResult != VK_SUCCESS) {
         return support;
     }
+
     u32 formatCount = 0;
     support.formatsResult = vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, nullptr);
     if (support.formatsResult != VK_SUCCESS) {
@@ -1025,6 +1086,7 @@ static VulkanSwapchainSupport querySwapchainSupport(VkPhysicalDevice device, VkS
             return support;
         }
     }
+
     u32 presentModeCount = 0;
     support.presentModesResult = vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, nullptr);
     if (support.presentModesResult != VK_SUCCESS) {
@@ -1037,24 +1099,30 @@ static VulkanSwapchainSupport querySwapchainSupport(VkPhysicalDevice device, VkS
             support.presentModes.clear();
         }
     }
+
     return support;
 }
 
 static VkSurfaceFormatKHR chooseSwapchainFormat(const VulkanSwapchainSupport& support, const RHISwapchainDesc& desc) {
-    const VkFormat          requestedFormat     = toVkFormat(desc.preferredFormat);
-    const VkColorSpaceKHR   requestedColorSpace = toVkColorSpace(desc.colorSpace);
+    const VkFormat        requestedFormat     = toVkFormat(desc.preferredFormat);
+    const VkColorSpaceKHR requestedColorSpace = toVkColorSpace(desc.colorSpace);
+
     if (support.formats.size() == 1 && support.formats[0].format == VK_FORMAT_UNDEFINED) {
         return {
             requestedFormat == VK_FORMAT_UNDEFINED ? VK_FORMAT_B8G8R8A8_SRGB : requestedFormat,
             requestedColorSpace
         };
     }
-    for (const VkSurfaceFormatKHR format : support.formats) {
+
+    for (const VkSurfaceFormatKHR& format : support.formats) {
         if (format.format == requestedFormat && format.colorSpace == requestedColorSpace) {
             return format;
         }
     }
-    return support.formats.empty() ? VkSurfaceFormatKHR{ VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR } : support.formats[0];
+
+    return support.formats.empty()
+        ? VkSurfaceFormatKHR{VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR}
+        : support.formats[0];
 }
 
 static VkPresentModeKHR chooseSwapchainPresentMode(const VulkanSwapchainSupport& support, RHIPresentMode requestedMode) {
@@ -1069,9 +1137,10 @@ static VkExtent2D chooseSwapchainExtent(const VulkanSwapchainSupport& support, R
     if (support.capabilities.currentExtent.width != std::numeric_limits<u32>::max()) {
         return support.capabilities.currentExtent;
     }
+
     return {
         std::clamp(requestedExtent.width, support.capabilities.minImageExtent.width, support.capabilities.maxImageExtent.width),
-        std::clamp(requestedExtent.height, support.capabilities.minImageExtent.height, support.capabilities.maxImageExtent.height),
+        std::clamp(requestedExtent.height, support.capabilities.minImageExtent.height, support.capabilities.maxImageExtent.height)
     };
 }
 
@@ -1084,7 +1153,7 @@ static u32 chooseSwapchainImageCount(const VulkanSwapchainSupport& support, u32 
 }
 
 static VkSurfaceTransformFlagBitsKHR chooseSwapchainTransform(const VulkanSwapchainSupport& support, RHISurfaceTransform requestedTransform) {
-    VkSurfaceTransformFlagBitsKHR transform = toVkSurfaceTransform(requestedTransform);
+    const VkSurfaceTransformFlagBitsKHR transform = toVkSurfaceTransform(requestedTransform);
     return (support.capabilities.supportedTransforms & transform) != 0 ? transform : support.capabilities.currentTransform;
 }
 
@@ -1105,12 +1174,17 @@ static VkCompositeAlphaFlagBitsKHR chooseSwapchainCompositeAlpha(const VulkanSwa
     return VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
 }
 
+// Vulkan 的队列能力挂在 queue family 上，不是每个 VkQueue 都天然支持所有操作。
+// 这里优先找图形队列，再尽量找独立 compute/transfer 队列；如果找不到独立队列，就退回到
+// graphics family，保证 RHIQueueType::Transfer 等抽象至少有可用队列。
 static VulkanQueueFamilies findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surface) {
     VulkanQueueFamilies result{};
+
     u32 count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(device, &count, nullptr);
     std::vector<VkQueueFamilyProperties> families(count);
     vkGetPhysicalDeviceQueueFamilyProperties(device, &count, families.data());
+
     for (u32 index = 0; index < count; ++index) {
         const VkQueueFlags flags = families[index].queueFlags;
         if (result.graphics == RHI_INVALID_INDEX && (flags & VK_QUEUE_GRAPHICS_BIT) != 0) {
@@ -1127,13 +1201,14 @@ static VulkanQueueFamilies findQueueFamilies(VkPhysicalDevice device, VkSurfaceK
             }
         }
         if (surface != VK_NULL_HANDLE) {
-            VkBool32 presentSupport = VK_FALSE;
-            const VkResult presentResult = vkGetPhysicalDeviceSurfaceSupportKHR(device, index, surface, &presentSupport);
-            if (presentResult == VK_SUCCESS && presentSupport == VK_TRUE && result.present == RHI_INVALID_INDEX) {
+            VkBool32 presentSupported = VK_FALSE;
+            const VkResult presentResult = vkGetPhysicalDeviceSurfaceSupportKHR(device, index, surface, &presentSupported);
+            if (presentResult == VK_SUCCESS && presentSupported == VK_TRUE && result.present == RHI_INVALID_INDEX) {
                 result.present = index;
             }
         }
     }
+
     if (result.transfer == RHI_INVALID_INDEX) {
         result.transfer = result.graphics;
     }
@@ -1143,7 +1218,10 @@ static VulkanQueueFamilies findQueueFamilies(VkPhysicalDevice device, VkSurfaceK
     return result;
 }
 
-static bool deviceSupportsRequiredExtensions(VkPhysicalDevice device, const std::vector<const char*>& requiredExtensions, bool needsSwapchain) {
+static bool deviceSupportsRequiredExtensions(
+    VkPhysicalDevice device,
+    const std::vector<const char*>& requiredExtensions,
+    bool needsSwapchain) {
     const std::vector<VkExtensionProperties> available = enumerateDeviceExtensions(device);
     for (const char* extension : requiredExtensions) {
         if (!hasExtension(available, extension)) {
@@ -1153,19 +1231,22 @@ static bool deviceSupportsRequiredExtensions(VkPhysicalDevice device, const std:
     return !needsSwapchain || hasExtension(available, VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 }
 
+/// 汇总物理设备的 core/1.2/1.3 feature，后续打分、启用和能力查询都用同一份结果。
 struct VulkanDeviceSupport {
-    VkPhysicalDeviceProperties          properties{};
-    VkPhysicalDeviceFeatures            features{};
-    VkPhysicalDeviceVulkan12Features    features12{};
-    VkPhysicalDeviceVulkan13Features    features13{};
+    VkPhysicalDeviceProperties properties{};
+    VkPhysicalDeviceFeatures features{};
+    VkPhysicalDeviceVulkan12Features features12{};
+    VkPhysicalDeviceVulkan13Features features13{};
 };
 
 static VulkanDeviceSupport queryVulkanDeviceSupport(VkPhysicalDevice device) {
     VulkanDeviceSupport support{};
     vkGetPhysicalDeviceProperties(device, &support.properties);
+
     support.features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
     support.features13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
     support.features12.pNext = &support.features13;
+
     VkPhysicalDeviceFeatures2 features2{};
     features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
     features2.pNext = &support.features12;
@@ -1176,6 +1257,9 @@ static VulkanDeviceSupport queryVulkanDeviceSupport(VkPhysicalDevice device) {
     return support;
 }
 
+// requiredFeatures 是用户/引擎声明“没有就不能启动”的能力集合。
+// 这里不要只看 Vulkan 是否暴露 feature，还要看本后端是否真的实现了对应资源模型和命令路径；
+// 例如硬件可能支持光追，但当前 renderer 没有 AS、SBT、ray pipeline，所以仍要返回 false。
 static bool supportsRequiredRenderFeatures(const VulkanDeviceSupport& support, const VulkanQueueFamilies& queues, RHIRenderFeature required) {
     if (RHIHasAny(required, RHIRenderFeature::Compute)                 && queues.compute == RHI_INVALID_INDEX)                                    return false;
     if (RHIHasAny(required, RHIRenderFeature::SamplerAnisotropy)       && support.features.samplerAnisotropy != VK_TRUE)                          return false;
@@ -1200,8 +1284,13 @@ static bool supportsRequiredRenderFeatures(const VulkanDeviceSupport& support, c
     return !RHIHasAny(required, unsupportedByThisBackend);
 }
 
-static i32 scorePhysicalDevice(VkPhysicalDevice device, VkSurfaceKHR surface, const RHIVulkanDesc& desc) {
+// 物理设备打分用于在多 GPU 机器上选择默认设备。
+// - 不满足队列、surface、扩展、required feature 的设备直接淘汰；
+// - 离散 GPU 默认更高分；
+// - LowPower 模式下集成 GPU 会被偏好。
+static int scorePhysicalDevice(VkPhysicalDevice device, VkSurfaceKHR surface, const RHIVulkanDesc& desc) {
     const VulkanDeviceSupport support = queryVulkanDeviceSupport(device);
+
     const auto queues = findQueueFamilies(device, surface);
     if (queues.graphics == RHI_INVALID_INDEX) {
         return -1;
@@ -1221,7 +1310,7 @@ static i32 scorePhysicalDevice(VkPhysicalDevice device, VkSurfaceKHR surface, co
     if (support.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) score += 300;
     score += static_cast<int>(support.properties.limits.maxImageDimension2D / 1024);
 
-    if (desc.backend.powerPreference == RHIPowerPreference::Lower &&
+    if (desc.backend.powerPreference == RHIPowerPreference::LowPower &&
         support.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) {
         score += 1000;
     }
@@ -1247,4 +1336,16 @@ static VkDebugUtilsMessengerCreateInfoEXT makeDebugMessengerCreateInfo() {
     return info;
 }
 
-} // namespace RHI
+} // namespace rhi
+
+
+
+
+
+
+
+
+
+
+
+

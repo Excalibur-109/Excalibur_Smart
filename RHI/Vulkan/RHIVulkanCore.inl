@@ -1,35 +1,49 @@
-#pragma once
+﻿#pragma once
 
 #include "RHIVulkanPrivate.inl"
 
-namespace RHI {
+namespace rhi {
 
-RHIVulkan::RHIVulkan() : impl_(std::make_unique<Impl>()) {}
-RHIVulkan::~RHIVulkan() { Shutdown(); }
+RHIVulkan::RHIVulkan()
+    : impl_(std::make_unique<Impl>()) {
+}
+
+RHIVulkan::~RHIVulkan() {
+    Shutdown();
+}
 
 RHIVulkan::RHIVulkan(RHIVulkan&&) noexcept = default;
+
 RHIVulkan& RHIVulkan::operator=(RHIVulkan&&) noexcept = default;
 
-b8 RHIVulkan::Initialize(const RHIVulkanDesc& desc, std::string* errorMessage) {
+// 初始化 Vulkan 后端的主流程：
+// 1. 收集 layer/extension，创建 VkInstance 和可选 debug messenger；
+// 2. 创建/接收 VkSurfaceKHR，用于后续 swapchain 和 present queue 查询；
+// 3. 枚举物理设备并打分，选出满足 requiredFeatures 的 GPU；
+// 4. 创建 logical device，启用需要的 feature/extension，并取出各类队列；
+// 5. 创建 command pool、descriptor pool，并把设备限制整理成 RHICapabilities。
+bool RHIVulkan::Initialize(const RHIVulkanDesc& desc, std::string* errorMessage) {
     try {
         if (IsInitialized()) {
             Shutdown();
         }
+
         impl_ = std::make_unique<Impl>();
         impl_->initDesc = desc;
         impl_->native.surface = desc.surface.surface;
         impl_->ownsSurface = desc.surface.ownsSurface;
 
-        const b8 wantsValidation = desc.backend.validation != RHIValidationMode::Disabled;
+        const bool wantsValidation = desc.backend.validation != RHIValidationMode::Disabled;
         const RHIRenderFeature requestedFeatures = desc.backend.optionalFeatures | desc.backend.requiredFeatures;
-        const b8 wantsDebugUtils = wantsValidation || RHIHasAny(requestedFeatures, RHIRenderFeature::DebugMarkers);
-        const auto availableLayers = enumerateInstanceLayer();
+        const bool wantsDebugUtils = wantsValidation || RHIHasAny(requestedFeatures, RHIRenderFeature::DebugMarkers);
+        const auto availableLayers = enumerateInstanceLayers();
         const auto availableExtensions = enumerateInstanceExtensions();
 
         std::vector<const char*> layers;
         if (wantsValidation && hasLayer(availableLayers, "VK_LAYER_KHRONOS_validation")) {
             layers.push_back("VK_LAYER_KHRONOS_validation");
         }
+
         std::vector<const char*> instanceExtensions;
         for (const char* extension : desc.requiredInstanceExtensions) {
             if (!hasExtension(availableExtensions, extension)) {
@@ -44,14 +58,13 @@ b8 RHIVulkan::Initialize(const RHIVulkanDesc& desc, std::string* errorMessage) {
         }
         if (wantsDebugUtils && hasExtension(availableExtensions, VK_EXT_DEBUG_UTILS_EXTENSION_NAME)) {
             appendUniqueExtension(instanceExtensions, VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-        }
-        else if (RHIHasAny(requestedFeatures, RHIRenderFeature::DebugMarkers)) {
+        } else if (RHIHasAny(desc.backend.requiredFeatures, RHIRenderFeature::DebugMarkers)) {
             throw std::runtime_error("Missing Vulkan instance extension: VK_EXT_debug_utils");
         }
 
         VkApplicationInfo appInfo{};
         appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-        appInfo.pApplicationName = desc.backend.applicationName.empty() ? "Excalibur" : desc.backend.applicationName.c_str();
+        appInfo.pApplicationName = desc.backend.applicationName.empty() ? "VulkanLearn" : desc.backend.applicationName.c_str();
         appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
         appInfo.pEngineName = desc.backend.engineName.c_str();
         appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
@@ -69,31 +82,37 @@ b8 RHIVulkan::Initialize(const RHIVulkanDesc& desc, std::string* errorMessage) {
         if (wantsValidation) {
             instanceInfo.pNext = &debugCreateInfo;
         }
+
         if (vkCreateInstance(&instanceInfo, nullptr, &impl_->native.instance) != VK_SUCCESS) {
             throw std::runtime_error("vkCreateInstance failed");
         }
 
-        auto createDebugUtilsMessenger = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(impl_->native.instance, "vkCreateDebugUtilsMessengerEXT"));
-        if (wantsValidation && createDebugUtilsMessenger != nullptr) {
-            createDebugUtilsMessenger(impl_->native.instance, &debugCreateInfo, nullptr, &impl_->debugMessenger);
+        auto createDebugMessenger = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
+            vkGetInstanceProcAddr(impl_->native.instance, "vkCreateDebugUtilsMessengerEXT"));
+        if (wantsValidation && createDebugMessenger != nullptr) {
+            createDebugMessenger(impl_->native.instance, &debugCreateInfo, nullptr, &impl_->debugMessenger);
         }
 
-        if (impl_->native.surface == VK_NULL_HANDLE && desc.surface.createSurface != nullptr) {
+        if (impl_->native.surface == VK_NULL_HANDLE && desc.surface.createSurface) {
+            // GLFW 等窗口库必须等 VkInstance 创建后才能创建 VkSurfaceKHR。
             impl_->native.surface = desc.surface.createSurface(impl_->native.instance);
             if (impl_->native.surface == VK_NULL_HANDLE) {
                 throw std::runtime_error("The Vulkan surface factory returned a null VkSurfaceKHR");
             }
         }
+
         u32 physicalDeviceCount = 0;
         vkEnumeratePhysicalDevices(impl_->native.instance, &physicalDeviceCount, nullptr);
         if (physicalDeviceCount == 0) {
             throw std::runtime_error("No Vulkan physical device was found");
         }
+
         std::vector<VkPhysicalDevice> physicalDevices(physicalDeviceCount);
         vkEnumeratePhysicalDevices(impl_->native.instance, &physicalDeviceCount, physicalDevices.data());
-        i32 bestScore = -1;
-        for (const VkPhysicalDevice device : physicalDevices) {
-            const i32 score = scorePhysicalDevice(device, impl_->native.surface, desc);
+
+        int bestScore = -1;
+        for (VkPhysicalDevice device : physicalDevices) {
+            const int score = scorePhysicalDevice(device, impl_->native.surface, desc);
             if (score > bestScore) {
                 bestScore = score;
                 impl_->native.physicalDevice = device;
@@ -102,17 +121,20 @@ b8 RHIVulkan::Initialize(const RHIVulkanDesc& desc, std::string* errorMessage) {
         if (impl_->native.physicalDevice == VK_NULL_HANDLE) {
             throw std::runtime_error("No Vulkan physical device satisfies the required capabilities");
         }
+
         impl_->queueFamilies = findQueueFamilies(impl_->native.physicalDevice, impl_->native.surface);
-        std::set<u32> uniqueFamilies {
+
+        std::set<u32> uniqueFamilies = {
             impl_->queueFamilies.graphics,
             impl_->queueFamilies.compute,
             impl_->queueFamilies.transfer,
             impl_->queueFamilies.present
         };
         uniqueFamilies.erase(RHI_INVALID_INDEX);
-        const f32 queuePriority = 1.0F;
+
+        const float queuePriority = 1.0F;
         std::vector<VkDeviceQueueCreateInfo> queueInfos;
-        for (const u32 family : uniqueFamilies) {
+        for (u32 family : uniqueFamilies) {
             VkDeviceQueueCreateInfo queueInfo{};
             queueInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
             queueInfo.queueFamilyIndex = family;
@@ -143,6 +165,7 @@ b8 RHIVulkan::Initialize(const RHIVulkanDesc& desc, std::string* errorMessage) {
             throw std::runtime_error(
                 "RHIVulkan requires Vulkan timeline semaphore support for frame synchronization");
         }
+
         VkPhysicalDeviceFeatures enabledFeatures{};
         enabledFeatures.samplerAnisotropy = support.features.samplerAnisotropy;
         enabledFeatures.geometryShader = support.features.geometryShader && RHIHasAny(desc.backend.optionalFeatures | desc.backend.requiredFeatures, RHIRenderFeature::GeometryShader);
@@ -150,6 +173,8 @@ b8 RHIVulkan::Initialize(const RHIVulkanDesc& desc, std::string* errorMessage) {
 
         VkPhysicalDeviceVulkan12Features enabled12{};
         enabled12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+        // FrameContext 使用 timeline value 表达递增的 GPU 完成进度，所以该 feature
+        // 是 Vulkan 后端的基础能力，而不是可选优化。
         enabled12.timelineSemaphore = VK_TRUE;
         enabled12.drawIndirectCount = support.features12.drawIndirectCount;
 
@@ -187,10 +212,15 @@ b8 RHIVulkan::Initialize(const RHIVulkanDesc& desc, std::string* errorMessage) {
         impl_->native.transferQueueFamily = impl_->queueFamilies.transfer;
         impl_->native.presentQueueFamily = impl_->queueFamilies.present;
 
-        impl_->setDebugUtilsObjectName = reinterpret_cast<PFN_vkSetDebugUtilsObjectNameEXT>(vkGetDeviceProcAddr(impl_->native.device, "vkSetDebugUtilsObjectNameEXT"));
+        // vkSetDebugUtilsObjectNameEXT 是 device-level command。设备创建完成后应通过
+        // vkGetDeviceProcAddr 获取，避免依赖 loader 是否从 instance 查询返回兼容跳板。
+        impl_->setDebugUtilsObjectName = reinterpret_cast<PFN_vkSetDebugUtilsObjectNameEXT>(
+            vkGetDeviceProcAddr(impl_->native.device, "vkSetDebugUtilsObjectNameEXT"));
 
         VkCommandPoolCreateInfo commandPoolInfo{};
         commandPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        // CommandBuffer 在 FrameContext 中长期复用。RESET_COMMAND_BUFFER 允许某个帧槽位的
+        // timeline value 完成后单独重录；TRANSIENT 表示其中的命令通常只提交一次。
         commandPoolInfo.flags =
             VK_COMMAND_POOL_CREATE_TRANSIENT_BIT |
             VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
@@ -259,6 +289,7 @@ b8 RHIVulkan::Initialize(const RHIVulkanDesc& desc, std::string* errorMessage) {
 
         VkPhysicalDeviceMemoryProperties memoryProperties{};
         vkGetPhysicalDeviceMemoryProperties(impl_->native.physicalDevice, &memoryProperties);
+
         impl_->caps.api = RHIGraphicsAPI::Vulkan;
         impl_->caps.adapterName = support.properties.deviceName;
         impl_->caps.maxTexture2DSize = support.properties.limits.maxImageDimension2D;
@@ -314,14 +345,12 @@ b8 RHIVulkan::Initialize(const RHIVulkanDesc& desc, std::string* errorMessage) {
         }
 
         return true;
-    }
-    catch (const std::exception& error) {
+    } catch (const std::exception& error) {
         if (errorMessage != nullptr) {
             *errorMessage = error.what();
         }
         Shutdown();
         return false;
-
     }
 }
 
@@ -329,7 +358,7 @@ void RHIVulkan::Shutdown() noexcept {
     if (!impl_) {
         return;
     }
-    
+
     if (impl_->native.device == VK_NULL_HANDLE) {
         if (impl_->debugMessenger != VK_NULL_HANDLE) {
             auto DestroyDebugMessenger = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
@@ -357,7 +386,10 @@ void RHIVulkan::Shutdown() noexcept {
     impl_->hasUntrackedSubmissions = false;
     impl_->deviceKnownIdle = true;
     impl_->flushDeferredReleases();
-    
+
+    // 销毁顺序按依赖反向来：swapchain/image view 依赖 texture，bind set 依赖 layout，
+    // pipeline 依赖 pipeline layout，底层 buffer/texture 最后释放。Vulkan 对象销毁时
+    // 不会自动追踪这些关系，所以后端需要保持明确顺序。
     for (u64 i = impl_->swapchains.size(); i > 0; --i)          Destroy(RHISwapchain(i));
     for (u64 i = impl_->pipelines.size(); i > 0; --i)           Destroy(RHIPipeline(i));
     for (u64 i = impl_->pipelineCaches.size(); i > 0; --i)      Destroy(RHIPipelineCache(i));
@@ -435,4 +467,19 @@ const RHIVulkanNativeHandles& RHIVulkan::NativeHandles() const noexcept {
     return impl_->native;
 }
 
-} // namespace RHI
+// Buffer 在 Vulkan 中分成两步：先创建 VkBuffer 得到资源形状和 usage，再查询 memory
+// requirements，分配合适 memory type，最后 vkBindBufferMemory 绑定。persistentlyMapped
+// 只适合 CPU 可见内存，用来让上层长期写入动态数据。
+
+} // namespace rhi
+
+
+
+
+
+
+
+
+
+
+

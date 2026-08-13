@@ -1,8 +1,8 @@
-#pragma once
+﻿#pragma once
 
 #include "RHIVulkanPrivate.inl"
 
-namespace RHI {
+namespace rhi {
 
 void RHIVulkan::Destroy(RHIBuffer handle) noexcept {
     Impl::BufferResource* resource = getRenderResource(impl_->buffers, handle);
@@ -173,4 +173,13 @@ void RHIVulkan::Destroy(RHISwapchain handle) noexcept {
     }
 }
 
-} // namespace RHI
+} // namespace rhi
+
+
+
+
+
+
+
+
+

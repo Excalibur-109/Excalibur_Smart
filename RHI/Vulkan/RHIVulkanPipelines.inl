@@ -1,8 +1,8 @@
-#pragma once
+﻿#pragma once
 
 #include "RHIVulkanPrivate.inl"
 
-namespace RHI {
+namespace rhi {
 
 static VkStencilOpState toVkStencilState(const RHIStencilFaceState& state) {
     VkStencilOpState vkState{};
@@ -16,6 +16,9 @@ static VkStencilOpState toVkStencilState(const RHIStencilFaceState& state) {
     return vkState;
 }
 
+// GraphicsPipeline 在 Vulkan 中是“大状态对象”：shader stages、vertex layout、primitive、
+// raster/depth/blend/multisample 等固定状态会一起烘进 VkPipeline。本实现使用 dynamic
+// rendering，所以 pipeline 只记录附件 format，不需要提前创建 VkRenderPass。
 RHIPipeline RHIVulkan::CreateGraphicsPipeline(const RHIGraphicsPipelineDesc& desc) {
     if (!impl_->caps.supportsDynamicRendering) {
         throw std::runtime_error("The Vulkan graphics pipeline implementation requires dynamic rendering");
@@ -219,6 +222,8 @@ RHIPipeline RHIVulkan::CreateGraphicsPipeline(const RHIGraphicsPipelineDesc& des
     return handle;
 }
 
+// Compute pipeline 比图形管线简单：只有一个 compute shader stage 和一个 pipeline layout。
+// 创建完成后临时 shader module 可以销毁，因为 VkPipeline 已经内部引用/编译了需要的信息。
 RHIPipeline RHIVulkan::CreateComputePipeline(const RHIComputePipelineDesc& desc) {
     const Impl::PipelineLayoutResource* layout = getRenderResource(impl_->pipelineLayouts, desc.layout);
     if (layout == nullptr || layout->layout == VK_NULL_HANDLE) {
@@ -261,7 +266,10 @@ RHIPipeline RHIVulkan::CreateComputePipeline(const RHIComputePipelineDesc& desc)
     return handle;
 }
 
-} // namespace RHI
+// QueryPool 用于 GPU 侧统计：timestamp 量时间，occlusion 量通过深度/模板测试的样本，
+// pipeline statistics 量各阶段调用次数。不是所有统计项都默认可用，所以初始化时会检查 feature。
+
+} // namespace rhi
 
 
 
