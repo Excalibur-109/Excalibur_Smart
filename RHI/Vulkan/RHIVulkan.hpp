@@ -65,103 +65,39 @@ public:
     RHIVulkan(RHIVulkan&&) noexcept;
     RHIVulkan& operator=(RHIVulkan&&) noexcept;
 
-    /// 初始化 Vulkan instance、physical device、logical device 和基础资源池。
-    [[nodiscard]] bool Initialize(const RHIVulkanDesc& desc, std::string* errorMessage = nullptr);
-
-    /// 销毁所有 Vulkan 对象；调用后所有渲染句柄都失效。
-    void Shutdown() noexcept;
-
-    /// 后端是否已经成功初始化。
-    [[nodiscard]] bool IsInitialized() const noexcept;
-
-    /// 当前设备能力，初始化成功后有效。
-    [[nodiscard]] const RHICapabilities& Capabilities() const noexcept;
-
-    /// 当前 Vulkan 原生句柄，便于调试或和教程代码过渡集成。
-    [[nodiscard]] const RHIVulkanNativeHandles& NativeHandles() const noexcept;
-
-    /// 创建 GPU buffer。
-    [[nodiscard]] RHIBuffer CreateBuffer(const RHIBufferDesc& desc);
-
-    /// 创建 GPU texture/image。
-    [[nodiscard]] RHITexture CreateTexture(const RHITextureDesc& desc);
-
-    /// 创建 texture view。
-    [[nodiscard]] RHITextureView CreateTextureView(const RHITextureViewDesc& desc);
-
-    /// 创建 sampler。
-    [[nodiscard]] RHISampler CreateSampler(const RHISamplerDesc& desc);
-
-    /// 从 SPIR-V bytecode 或 filePath 创建 shader module。
-    [[nodiscard]] RHIShader CreateShaderModule(const RHIShaderDesc& desc);
-
-    /// 创建 descriptor set layout。
-    [[nodiscard]] RHIBindSetLayout CreateBindSetLayout(const RHIBindSetLayoutDesc& desc);
-
-    /// 创建并更新 descriptor set。
-    [[nodiscard]] RHIBindSet CreateBindSet(const RHIBindSetDesc& desc);
-
-    /// 创建 pipeline layout。
-    [[nodiscard]] RHIPipelineLayout CreatePipelineLayout(const RHIPipelineLayoutDesc& desc);
-
-    /// 创建 pipeline cache。
-    [[nodiscard]] RHIPipelineCache CreatePipelineCache(const RHIPipelineCacheDesc& desc);
-
-    /// 创建 graphics pipeline；当前实现使用 Vulkan dynamic rendering。
-    [[nodiscard]] RHIPipeline CreateGraphicsPipeline(const RHIGraphicsPipelineDesc& desc);
-
-    /// 创建 compute pipeline。
-    [[nodiscard]] RHIPipeline CreateComputePipeline(const RHIComputePipelineDesc& desc);
-
-    /// 创建 GPU query pool。
-    [[nodiscard]] RHIQueryPool CreateQueryPool(const RHIQueryPoolDesc& desc);
-
-    /// 创建 semaphore。
-    [[nodiscard]] RHIGPUWaitGPUSignal CreateGPUWaitGPUSignal(const RHIGPUWaitGPUSignalDesc& desc);
-
-    /// 创建 fence。
-    [[nodiscard]] RHICPUWaitGPUSignal CreateCPUWaitGPUSignal(const RHICPUWaitGPUSignalDesc& desc);
-
-    /// 创建 swapchain；需要 Initialize 时传入有效 surface。
-    [[nodiscard]] RHISwapchain CreateSwapchain(const RHISwapchainDesc& desc);
-
-    /// 获取 swapchain image 对应的引擎 texture handles。
-    [[nodiscard]] std::vector<RHITexture> GetSwapchainImages(RHISwapchain handle) const;
-
-    /// 获取 swapchain image view handles。
-    [[nodiscard]] std::vector<RHITextureView> GetSwapchainImageViews(RHISwapchain handle) const;
-
-    /// 获取 swapchain 实际选择的后备缓冲格式；无效句柄返回 RHIFormat::Undefined。
-    [[nodiscard]] RHIFormat GetSwapchainFormat(RHISwapchain handle) const;
-
-    /// 获取 swapchain 实际 extent；无效句柄返回 {0, 0}。
-    [[nodiscard]] RHIExtent2D GetSwapchainExtent(RHISwapchain handle) const;
-
+    
+    [[nodiscard]] bool Initialize(const RHIVulkanDesc& desc, std::string* errorMessage = nullptr); /// 初始化 Vulkan instance、physical device、logical device 和基础资源池。
+    void Shutdown() noexcept;   /// 销毁所有 Vulkan 对象；调用后所有渲染句柄都失效。
+    [[nodiscard]] bool IsInitialized() const noexcept;  /// 后端是否已经成功初始化。 
+    [[nodiscard]] const RHICapabilities& Capabilities() const noexcept; /// 当前设备能力，初始化成功后有效。
+    [[nodiscard]] const RHIVulkanNativeHandles& NativeHandles() const noexcept; /// 当前 Vulkan 原生句柄，便于调试或和教程代码过渡集成。
+    [[nodiscard]] RHIBuffer CreateBuffer(const RHIBufferDesc& desc);    /// 创建 GPU buffer。
+    [[nodiscard]] RHITexture CreateTexture(const RHITextureDesc& desc); /// 创建 GPU texture/image。
+    [[nodiscard]] RHITextureView CreateTextureView(const RHITextureViewDesc& desc); /// 创建 texture view。
+    [[nodiscard]] RHISampler CreateSampler(const RHISamplerDesc& desc); /// 创建 sampler。
+    [[nodiscard]] RHIShader CreateShaderModule(const RHIShaderDesc& desc);  /// 从 SPIR-V bytecode 或 filePath 创建 shader module。
+    [[nodiscard]] RHIBindSetLayout CreateBindSetLayout(const RHIBindSetLayoutDesc& desc);   /// 创建 descriptor set layout。
+    [[nodiscard]] RHIBindSet CreateBindSet(const RHIBindSetDesc& desc); /// 创建并更新 descriptor set。
+    [[nodiscard]] RHIPipelineLayout CreatePipelineLayout(const RHIPipelineLayoutDesc& desc);    /// 创建 pipeline layout。
+    [[nodiscard]] RHIPipelineCache CreatePipelineCache(const RHIPipelineCacheDesc& desc);   /// 创建 pipeline cache。
+    [[nodiscard]] RHIPipeline CreateGraphicsPipeline(const RHIGraphicsPipelineDesc& desc);  /// 创建 graphics pipeline；当前实现使用 Vulkan dynamic rendering。
+    [[nodiscard]] RHIPipeline CreateComputePipeline(const RHIComputePipelineDesc& desc);    /// 创建 compute pipeline。
+    [[nodiscard]] RHIQueryPool CreateQueryPool(const RHIQueryPoolDesc& desc);   /// 创建 GPU query pool。
+    [[nodiscard]] RHIGPUWaitGPUSignal CreateGPUWaitGPUSignal(const RHIGPUWaitGPUSignalDesc& desc);  /// 创建 semaphore。
+    [[nodiscard]] RHICPUWaitGPUSignal CreateCPUWaitGPUSignal(const RHICPUWaitGPUSignalDesc& desc);  /// 创建 fence。
+    [[nodiscard]] RHISwapchain CreateSwapchain(const RHISwapchainDesc& desc);   /// 创建 swapchain；需要 Initialize 时传入有效 surface。
+    [[nodiscard]] std::vector<RHITexture> GetSwapchainImages(RHISwapchain handle) const;    /// 获取 swapchain image 对应的引擎 texture handles。
+    [[nodiscard]] std::vector<RHITextureView> GetSwapchainImageViews(RHISwapchain handle) const;    /// 获取 swapchain image view handles。
+    [[nodiscard]] RHIFormat GetSwapchainFormat(RHISwapchain handle) const;  /// 获取 swapchain 实际选择的后备缓冲格式；无效句柄返回 RHIFormat::Undefined。
+    [[nodiscard]] RHIExtent2D GetSwapchainExtent(RHISwapchain handle) const;    /// 获取 swapchain 实际 extent；无效句柄返回 {0, 0}。
     /// 获取下一张 swapchain image。
-    [[nodiscard]] bool AcquireNextImage(
-        RHISwapchain swapchain,
-        RHIGPUWaitGPUSignal gpuWaitGPUSignal,
-        RHICPUWaitGPUSignal cpuWaitGPUSignal,
-        u32* imageIndex,
-        std::string* errorMessage = nullptr);
+    [[nodiscard]] bool AcquireNextImage(RHISwapchain swapchain, RHIGPUWaitGPUSignal gpuWaitGPUSignal, RHICPUWaitGPUSignal cpuWaitGPUSignal, u32* imageIndex, std::string* errorMessage = nullptr);
+    [[nodiscard]] bool Submit(const RHIQueueSubmitDesc& desc, std::string* errorMessage = nullptr); /// 按 RHIQueueSubmitDesc 提交队列；当前提交已录好的内部/外部命令缓冲为空时可用于同步测试。
+    [[nodiscard]] bool Present(const RHIPresentDesc& desc, std::string* errorMessage = nullptr);    /// 执行 Present。
+    [[nodiscard]] bool SubmitFrame(const RHIFramePacket& packet, std::string* errorMessage = nullptr);  /// 提交一帧的同步和 Present 描述。RenderGraph 自动录制会在后续扩展。
+    [[nodiscard]] bool SubmitFrame(const RHIFramePacket& packet, const RHIRenderGraphExecutionPlan& graphPlan, std::string* errorMessage = nullptr);    /// 执行公共层已经验证和拓扑排序的 RenderGraph 计划。
 
-    /// 按 RHIQueueSubmitDesc 提交队列；当前提交已录好的内部/外部命令缓冲为空时可用于同步测试。
-    [[nodiscard]] bool Submit(const RHIQueueSubmitDesc& desc, std::string* errorMessage = nullptr);
-
-    /// 执行 Present。
-    [[nodiscard]] bool Present(const RHIPresentDesc& desc, std::string* errorMessage = nullptr);
-
-    /// 提交一帧的同步和 Present 描述。RenderGraph 自动录制会在后续扩展。
-    [[nodiscard]] bool SubmitFrame(const RHIFramePacket& packet, std::string* errorMessage = nullptr);
-
-    /// 执行公共层已经验证和拓扑排序的 RenderGraph 计划。
-    [[nodiscard]] bool SubmitFrame(
-        const RHIFramePacket& packet,
-        const RHIRenderGraphExecutionPlan& graphPlan,
-        std::string* errorMessage = nullptr);
-
-    /// 等待 device idle，通常只在 resize、退出或资源大清理时使用。
-    void WaitIdle() const noexcept;
+    void WaitIdle() const noexcept; /// 等待 device idle，通常只在 resize、退出或资源大清理时使用。
 
     /// 按句柄销毁对应 Vulkan 资源；无效句柄或已经销毁的资源会被忽略。
     void Destroy(RHIBuffer handle) noexcept;
