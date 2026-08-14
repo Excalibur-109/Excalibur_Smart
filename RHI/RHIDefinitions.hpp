@@ -36,7 +36,7 @@ namespace RHI {
  * - 后端可以根据 RHICapabilities 降级或选择不同实现路径。
  */
 /// 无效数组下标，常用于 optional index 或查找失败的返回值。
-inline constexpr u64 RHI_INVALID_INDEX = std::numeric_limits<u64>::max();
+inline constexpr u32 RHI_INVALID_INDEX = std::numeric_limits<u32>::max();
 
 /// 0 被保留为无效渲染资源句柄，真实后端资源句柄从非 0 值开始分配。
 inline constexpr u64 RHI_INVALID_HANDLE_VALUE = 0;
