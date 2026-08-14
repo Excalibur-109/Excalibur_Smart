@@ -524,7 +524,7 @@ static VkColorComponentFlags toVkColorWriteMask(RHIColorWriteMask mask) {
 
 static VkDynamicState toVkDynamicState(RHIDynamicState state) {
     switch (state) {
-    case RHIDynamicState::RHIViewport:         return VK_DYNAMIC_STATE_VIEWPORT;
+    case RHIDynamicState::RHIViewport:      return VK_DYNAMIC_STATE_VIEWPORT;
     case RHIDynamicState::Scissor:          return VK_DYNAMIC_STATE_SCISSOR;
     case RHIDynamicState::LineWidth:        return VK_DYNAMIC_STATE_LINE_WIDTH;
     case RHIDynamicState::DepthBias:        return VK_DYNAMIC_STATE_DEPTH_BIAS;
@@ -654,7 +654,7 @@ static VkPipelineStageFlags toVkPipelineStages(RHIPipelineStage stages) {
     case RHIResourceState::ResolveSource:      return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
     case RHIResourceState::ResolveDestination: return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
     case RHIResourceState::Present:            return VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    default:                                return VK_IMAGE_LAYOUT_GENERAL;
+    default:                                   return VK_IMAGE_LAYOUT_GENERAL;
     }
 }
 
@@ -671,7 +671,7 @@ static VkPipelineStageFlags toVkPipelineStages(RHIPipelineStage stages) {
     case RHIResourceState::DepthRead:        return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
     case RHIResourceState::DepthWrite:       return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
     case RHIResourceState::IndirectArgument: return VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
-    default:                              return 0;
+    default:                                 return 0;
     }
 }
 
