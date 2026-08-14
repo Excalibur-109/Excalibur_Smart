@@ -211,21 +211,21 @@ const RHICapabilities& RHIDevice::Capabilities() const noexcept {
             [&](auto& implementation) { return implementation.Method(desc); });                         \
     }
 
-RHI_FORWARD_RETURN(RHIBuffer, CreateBuffer, RHIBufferDesc)
-RHI_FORWARD_RETURN(RHITexture, CreateTexture, RHITextureDesc)
-RHI_FORWARD_RETURN(RHITextureView, CreateTextureView, RHITextureViewDesc)
-RHI_FORWARD_RETURN(RHISampler, CreateSampler, RHISamplerDesc)
-RHI_FORWARD_RETURN(RHIShader, CreateShaderModule, RHIShaderDesc)
-RHI_FORWARD_RETURN(RHIBindSetLayout, CreateBindSetLayout, RHIBindSetLayoutDesc)
-RHI_FORWARD_RETURN(RHIBindSet, CreateBindSet, RHIBindSetDesc)
-RHI_FORWARD_RETURN(RHIPipelineLayout, CreatePipelineLayout, RHIPipelineLayoutDesc)
-RHI_FORWARD_RETURN(RHIPipelineCache, CreatePipelineCache, RHIPipelineCacheDesc)
-RHI_FORWARD_RETURN(RHIPipeline, CreateGraphicsPipeline, RHIGraphicsPipelineDesc)
-RHI_FORWARD_RETURN(RHIPipeline, CreateComputePipeline, RHIComputePipelineDesc)
-RHI_FORWARD_RETURN(RHIQueryPool, CreateQueryPool, RHIQueryPoolDesc)
-RHI_FORWARD_RETURN(RHIGPUWaitGPUSignal, CreateGPUWaitGPUSignal, RHIGPUWaitGPUSignalDesc)
-RHI_FORWARD_RETURN(RHICPUWaitGPUSignal, CreateCPUWaitGPUSignal, RHICPUWaitGPUSignalDesc)
-RHI_FORWARD_RETURN(RHISwapchain, CreateSwapchain, RHISwapchainDesc)
+RHI_FORWARD_RETURN(RHIBuffer,           CreateBuffer,           RHIBufferDesc           )
+RHI_FORWARD_RETURN(RHITexture,          CreateTexture,          RHITextureDesc          )
+RHI_FORWARD_RETURN(RHITextureView,      CreateTextureView,      RHITextureViewDesc      )
+RHI_FORWARD_RETURN(RHISampler,          CreateSampler,          RHISamplerDesc          )
+RHI_FORWARD_RETURN(RHIShader,           CreateShaderModule,     RHIShaderDesc           )
+RHI_FORWARD_RETURN(RHIBindSetLayout,    CreateBindSetLayout,    RHIBindSetLayoutDesc    )
+RHI_FORWARD_RETURN(RHIBindSet,          CreateBindSet,          RHIBindSetDesc          )
+RHI_FORWARD_RETURN(RHIPipelineLayout,   CreatePipelineLayout,   RHIPipelineLayoutDesc   )
+RHI_FORWARD_RETURN(RHIPipelineCache,    CreatePipelineCache,    RHIPipelineCacheDesc    )
+RHI_FORWARD_RETURN(RHIPipeline,         CreateGraphicsPipeline, RHIGraphicsPipelineDesc )
+RHI_FORWARD_RETURN(RHIPipeline,         CreateComputePipeline,  RHIComputePipelineDesc  )
+RHI_FORWARD_RETURN(RHIQueryPool,        CreateQueryPool,        RHIQueryPoolDesc        )
+RHI_FORWARD_RETURN(RHIGPUWaitGPUSignal, CreateGPUWaitGPUSignal, RHIGPUWaitGPUSignalDesc )
+RHI_FORWARD_RETURN(RHICPUWaitGPUSignal, CreateCPUWaitGPUSignal, RHICPUWaitGPUSignalDesc )
+RHI_FORWARD_RETURN(RHISwapchain,        CreateSwapchain,        RHISwapchainDesc        )
 
 #undef RHI_FORWARD_RETURN
 
