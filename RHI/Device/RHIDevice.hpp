@@ -8,10 +8,13 @@
 
 namespace RHI {
 
+/// 唯一的跨 API RHI 设备门面。
+///
+/// Vulkan、D3D11、D3D12 后端都是普通类，不继承 RHIDevice。RHIDevice 在实现文件中
+/// 持有当前选中的后端，并把公共方法直接分发给它，从而消除三套重复的 Device 包装类。
 class RHIDevice {
-
 public:
-    explicit RHIDevice(RHIGraphicsAPI requiredApi = RHIGraphicsAPI::Unknown);
+    explicit RHIDevice(RHIGraphicsAPI requestedApi = RHIGraphicsAPI::Unknown);
     ~RHIDevice();
 
     RHIDevice(const RHIDevice&) = delete;
@@ -20,46 +23,44 @@ public:
     RHIDevice& operator=(RHIDevice&&) noexcept;
 
     [[nodiscard]] RHIGraphicsAPI Api() const noexcept;
-    [[nodiscard]] const char* BackendNamme() const noexcept;
-    [[nodiscard]] b8 Initialize(const RHIDeviceCreateDesc& desc, std::string* errorMessage = nullptr);
+    [[nodiscard]] const char* BackendName() const noexcept;
+    [[nodiscard]] bool Initialize(const RHIDeviceCreateDesc& desc, std::string* errorMessage = nullptr);
     void Shutdown() noexcept;
-    [[nodiscard]] b8 IsInitialized() const noexcept;
+    [[nodiscard]] bool IsInitialized() const noexcept;
     [[nodiscard]] const RHICapabilities& Capabilities() const noexcept;
 
-    [[nodiscard]] RHIBuffer         CreateBuffer            (const RHIBufferDesc& desc);
-    [[nodiscard]] RHITexture        CreateTexture           (const RHITextureDesc& desc);
-    [[nodiscard]] RHITextureView    CreateTextureView       (const RHITextureViewDesc& desc);
-    [[nodiscard]] RHISampler        CreateSampler           (const RHISamplerDesc& desc);
-    [[nodiscard]] RHIShader         CreateShaderModule      (const RHIShaderDesc& desc);
-    [[nodiscard]] RHIBindSetLayout  CreateBindSetLayout     (const RHIBindSetLayoutDesc& desc);
-    [[nodiscard]] RHIBindSet        CreateBindSet           (const RHIBindSetDesc& desc);
-    [[nodiscard]] RHIPipelineLayout CreatePipelineLayout    (const RHIPipelineLayoutDesc& desc);
-    [[nodiscard]] RHIPipelineCache  CreatePipelineCache     (const RHIPipelineCache& desc);
-    [[nodiscard]] RHIPipeline       CreateGraphicsPipeline  (const RHIGraphicsPipelineDesc& desc);
-    [[nodiscard]] RHIPipeline       CreateComputePipeline   (const RHIComputePipelineDesc& desc);
-    [[nodiscard]] RHISwapchain      CreateSwapchain         (const RHISwapchainDesc& desc);
-    [[nodiscard]] RHIQueryPool      CreateQueryPool         (const RHIQueryPoolDesc& desc);
+    [[nodiscard]] RHIBuffer CreateBuffer(const RHIBufferDesc& desc);
+    [[nodiscard]] RHITexture CreateTexture(const RHITextureDesc& desc);
+    [[nodiscard]] RHITextureView CreateTextureView(const RHITextureViewDesc& desc);
+    [[nodiscard]] RHISampler CreateSampler(const RHISamplerDesc& desc);
+    [[nodiscard]] RHIShader CreateShaderModule(const RHIShaderDesc& desc);
+    [[nodiscard]] RHIBindSetLayout CreateBindSetLayout(const RHIBindSetLayoutDesc& desc);
+    [[nodiscard]] RHIBindSet CreateBindSet(const RHIBindSetDesc& desc);
 
-    [[nodiscard]] RHIGPUWaitGPUSignal   CreateGPUWaitGPUSignal  (const RHIGPUWaitGPUSignalDesc& desc);
-    [[nodiscard]] RHICPUWaitGPUSignal   CreateCPUWaitGPUSignal  (const RHICPUWaitGPUSignalDesc& desc);
+    [[nodiscard]] RHIPipelineLayout CreatePipelineLayout(const RHIPipelineLayoutDesc& desc);
+    [[nodiscard]] RHIPipelineCache CreatePipelineCache(const RHIPipelineCacheDesc& desc);
+    [[nodiscard]] RHIPipeline CreateGraphicsPipeline(const RHIGraphicsPipelineDesc& desc);
+    [[nodiscard]] RHIPipeline CreateComputePipeline(const RHIComputePipelineDesc& desc);
 
-    [[nodiscard]] std::vector<RHITexture>       GetSwapchainImages      (RHISwapchain handle) const;
-    [[nodiscard]] std::vector<RHITextureView>   GetSwapchainImageViews  (RHISwapchain handle) const;
-    [[nodiscard]] RHIFormat                     GetSwapchainFormat      (RHISwapchain handle) const;
-    [[nodiscard]] RHIExtent2D                   GetSwapchainExtent      (RHISwapchain handle) const;
+    [[nodiscard]] RHIQueryPool CreateQueryPool(const RHIQueryPoolDesc& desc);
+    [[nodiscard]] RHIGPUWaitGPUSignal CreateGPUWaitGPUSignal(const RHIGPUWaitGPUSignalDesc& desc);
+    [[nodiscard]] RHICPUWaitGPUSignal CreateCPUWaitGPUSignal(const RHICPUWaitGPUSignalDesc& desc);
 
-    [[nodiscard]] b8 AcquireNextImage(
+    [[nodiscard]] RHISwapchain CreateSwapchain(const RHISwapchainDesc& desc);
+    [[nodiscard]] std::vector<RHITexture> GetSwapchainImages(RHISwapchain handle) const;
+    [[nodiscard]] std::vector<RHITextureView> GetSwapchainImageViews(RHISwapchain handle) const;
+    [[nodiscard]] RHIFormat GetSwapchainFormat(RHISwapchain handle) const;
+    [[nodiscard]] RHIExtent2D GetSwapchainExtent(RHISwapchain handle) const;
+    [[nodiscard]] bool AcquireNextImage(
         RHISwapchain swapchain,
         RHIGPUWaitGPUSignal gpuWaitGPUSignal,
         RHICPUWaitGPUSignal cpuWaitGPUSignal,
         u32* imageIndex,
-        std::string* errorMessage = nullptr
-    );
+        std::string* errorMessage = nullptr);
 
-    [[nodiscard]] b8 Submit     (const RHIQueueSubmitDesc& desc, std::string* errorMessage = nullptr);
-    [[nodiscard]] b8 Present    (const RHIPresentDesc& desc, std::string* errorMessage = nullptr);
-    [[nodiscard]] b8 SubmitFrame(const RHIFramePacket& packet, std::string* errorMessage = nullptr);
-
+    [[nodiscard]] bool Submit(const RHIQueueSubmitDesc& desc, std::string* errorMessage = nullptr);
+    [[nodiscard]] bool Present(const RHIPresentDesc& desc, std::string* errorMessage = nullptr);
+    [[nodiscard]] bool SubmitFrame(const RHIFramePacket& packet, std::string* errorMessage = nullptr);
     void WaitIdle() const noexcept;
 
     void Destroy(RHIBuffer handle) noexcept;
@@ -75,12 +76,20 @@ public:
     void Destroy(RHIQueryPool handle) noexcept;
     void Destroy(RHIGPUWaitGPUSignal handle) noexcept;
     void Destroy(RHICPUWaitGPUSignal handle) noexcept;
-    void Destroy(RHISwapchain handle) noexcept;    
+    void Destroy(RHISwapchain handle) noexcept;
 
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
-
 };
 
 } // namespace RHI
+
+
+
+
+
+
+
+
+

@@ -8,12 +8,12 @@
 #include <unordered_set>
 
 namespace RHI {
-
 namespace {
 
 constexpr u64 FNV_OFFSET = 14695981039346656037ULL;
-constexpr u64 FNV_PRIME  = 1099511628211ULL;
+constexpr u64 FNV_PRIME = 1099511628211ULL;
 
+// FNV-1a 足够快，适合每帧判断 graph 拓扑是否变化；它不是资源内容哈希，也不用于持久化。
 void HashBytes(u64& hash, const void* data, std::size_t size) noexcept {
     const auto* bytes = static_cast<const unsigned char*>(data);
     for (std::size_t index = 0; index < size; ++index) {
@@ -34,7 +34,7 @@ void HashString(u64& hash, const std::string& value) noexcept {
 }
 
 struct ResourceKey {
-    b8 buffer = false;
+    bool buffer = false;
     u32 index = RHI_INVALID_INDEX;
 
     friend bool operator==(ResourceKey lhs, ResourceKey rhs) noexcept = default;
@@ -42,72 +42,86 @@ struct ResourceKey {
 
 struct ResourceKeyHash {
     [[nodiscard]] std::size_t operator()(ResourceKey key) const noexcept {
-        return (static_cast<std::size_t>(key.index) << 1U) | static_cast<std::size_t>(key.buffer);
+        return (static_cast<std::size_t>(key.index) << 1U) |
+               static_cast<std::size_t>(key.buffer);
     }
 };
 
 struct PassUsage {
+    // 同一 pass 对同一资源的 reads/writes/attachment 会在这里合并。后续 hazard 和
+    // barrier 分析只看一条规范化用途，避免重复引用产生重复依赖边。
     RHIRenderGraphResourceId resource{};
-    RHIResourceState state  = RHIResourceState::Undefined;
+    RHIResourceState state = RHIResourceState::Undefined;
     RHIPipelineStage stages = RHIPipelineStage::None;
-    RHIAccessFlags   access = RHIAccessFlags::None;
-    b8 reads = false;
-    b8 writes = false;
-    b8 discardContents = false;
+    RHIAccessFlags access = RHIAccessFlags::None;
+    bool reads = false;
+    bool writes = false;
+    bool discardContents = false;
 };
 
 struct PassBuildData {
+    // 编译期临时数据，不进入最终 ExecutionPlan。dependencies 先装显式边，再追加
+    // RAW/WAR/WAW 边；workloadIndex 消除后端逐 pass 的字符串搜索。
     std::vector<PassUsage> usages;
     std::unordered_map<ResourceKey, u32, ResourceKeyHash> usageIndices;
     std::unordered_set<u32> dependencies;
     u32 workloadIndex = RHI_INVALID_INDEX;
-    b8 root = false;
+    bool root = false;
 };
 
 struct HazardState {
+    // 对一个资源扫描 pass 序列时的访问历史。一个资源只能有一个最近 writer，
+    // 但可以同时存在多个尚未被后续 write 截断的 readers。
     u32 lastWriter = RHI_INVALID_INDEX;
     std::vector<u32> readers;
-    b8 initialized = false;
+    bool initialized = false;
 };
 
 struct TrackedState {
-    RHIResourceState state  = RHIResourceState::Undefined;
+    // 用于生成 barrier 的逻辑状态机。它与后端的真实 native 状态追踪互相补充：
+    // 编译器负责“应该变成什么”，后端负责“当前实际上是什么”。
+    RHIResourceState state = RHIResourceState::Undefined;
     RHIPipelineStage stages = RHIPipelineStage::TopOfPipe;
     RHIAccessFlags access = RHIAccessFlags::None;
     RHIQueueType queue = RHIQueueType::Graphics;
-    b8 initialized = false;
-    b8 lastAccessWrote = false;
+    bool initialized = false;
+    bool lastAccessWrote = false;
 };
 
-[[nodiscard]] b8 IsImported(const RHIRenderGraphBufferDesc& resource) noexcept {
-    return resource.imported || RHIHasAny(resource.flags, RHIRenderGraphResourceFlags::Imported);
-};
-
-[[nodiscard]] b8 IsImported(const RHIRenderGraphTextureDesc& resource) noexcept {
+[[nodiscard]] bool IsImported(const RHIRenderGraphBufferDesc& resource) noexcept {
     return resource.imported || RHIHasAny(resource.flags, RHIRenderGraphResourceFlags::Imported);
 }
 
-[[nodiscard]] b8 IsOutput(RHIRenderGraphResourceFlags flags) noexcept {
-    return RHIHasAny(flags, RHIRenderGraphResourceFlags::Exported | RHIRenderGraphResourceFlags::NeverCull);
+[[nodiscard]] bool IsImported(const RHIRenderGraphTextureDesc& resource) noexcept {
+    return resource.imported || RHIHasAny(resource.flags, RHIRenderGraphResourceFlags::Imported);
 }
 
-[[nodiscard]] b8 CanAlias(const RHIRenderGraphBufferDesc& resource) noexcept {
+[[nodiscard]] bool IsOutput(RHIRenderGraphResourceFlags flags) noexcept {
+    return RHIHasAny(
+        flags,
+        RHIRenderGraphResourceFlags::Exported |
+            RHIRenderGraphResourceFlags::NeverCull);
+}
+
+[[nodiscard]] bool CanAlias(const RHIRenderGraphBufferDesc& resource) noexcept {
     return !IsImported(resource) &&
-        RHIHasAny(resource.flags, RHIRenderGraphResourceFlags::AllowAliasing) &&
-        (RHIHasAny(resource.flags, RHIRenderGraphResourceFlags::Transient) ||
-        resource.desc.lifetime == RHIResourceLifetime::Transient) &&
-        !IsOutput(resource.flags);
+           RHIHasAny(resource.flags, RHIRenderGraphResourceFlags::AllowAliasing) &&
+           (RHIHasAny(resource.flags, RHIRenderGraphResourceFlags::Transient) ||
+            resource.desc.lifetime == RHIResourceLifetime::Transient) &&
+           !IsOutput(resource.flags);
 }
 
-[[nodiscard]] b8 CanAlias(const RHIRenderGraphTextureDesc& resource) noexcept {
+[[nodiscard]] bool CanAlias(const RHIRenderGraphTextureDesc& resource) noexcept {
     return !IsImported(resource) &&
-        RHIHasAny(resource.flags, RHIRenderGraphResourceFlags::AllowAliasing) &&
-        (RHIHasAny(resource.flags, RHIRenderGraphResourceFlags::Transient) ||
-        resource.desc.lifetime == RHIResourceLifetime::Transient) &&
-        !IsOutput(resource.flags);
+           RHIHasAny(resource.flags, RHIRenderGraphResourceFlags::AllowAliasing) &&
+           (RHIHasAny(resource.flags, RHIRenderGraphResourceFlags::Transient) ||
+            resource.desc.lifetime == RHIResourceLifetime::Transient) &&
+           !IsOutput(resource.flags);
 }
 
-[[nodiscard]] b8 AreCompatible(const RHIBufferDesc& lhs, const RHIBufferDesc& rhs) noexcept {
+[[nodiscard]] bool AreCompatible(
+    const RHIBufferDesc& lhs,
+    const RHIBufferDesc& rhs) noexcept {
     return lhs.size == rhs.size &&
            lhs.usage == rhs.usage &&
            lhs.flags == rhs.flags &&
@@ -116,7 +130,9 @@ struct TrackedState {
            lhs.persistentlyMapped == rhs.persistentlyMapped;
 }
 
-[[nodiscard]] b8 AreCompatible(const RHITextureDesc& lhs, const RHITextureDesc& rhs) noexcept {
+[[nodiscard]] bool AreCompatible(
+    const RHITextureDesc& lhs,
+    const RHITextureDesc& rhs) noexcept {
     return lhs.dimension == rhs.dimension &&
            lhs.extent.width == rhs.extent.width &&
            lhs.extent.height == rhs.extent.height &&
@@ -131,12 +147,15 @@ struct TrackedState {
            lhs.initialState == rhs.initialState;
 }
 
-[[nodiscard]] RHIRenderGraphResourceType NormalizeType(RHIRenderGraphResourceType type) noexcept {
-    return type == RHIRenderGraphResourceType::Buffer ? RHIRenderGraphResourceType::Buffer : RHIRenderGraphResourceType::Texture;
+[[nodiscard]] RHIRenderGraphResourceType NormalizeType(
+    RHIRenderGraphResourceType type) noexcept {
+    return type == RHIRenderGraphResourceType::Buffer
+               ? RHIRenderGraphResourceType::Buffer
+               : RHIRenderGraphResourceType::Texture;
 }
 
 [[nodiscard]] ResourceKey MakeKey(RHIRenderGraphResourceId resource) noexcept {
-    return ResourceKey(resource.IsBuffer(), resource.index);
+    return ResourceKey{resource.IsBuffer(), resource.index};
 }
 
 void AddUnique(std::vector<u32>& values, u32 value) {
@@ -145,13 +164,17 @@ void AddUnique(std::vector<u32>& values, u32 value) {
     }
 }
 
-[[nodiscard]] std::vector<u32> BuildStableTopologicalOrder(const std::vector<PassBuildData>& passData) {
+/// 对当前依赖集合执行稳定拓扑排序。可执行 pass 总是优先选择原始下标较小者，
+/// 因此不含依赖关系的 pass 会保持声明顺序，便于调试和 GPU capture 对照源码。
+[[nodiscard]] std::vector<u32> BuildStableTopologicalOrder(
+    const std::vector<PassBuildData>& passData) {
     std::vector<std::vector<u32>> dependents(passData.size());
     std::vector<u32> indegrees(passData.size(), 0);
     std::deque<u32> ready;
 
     for (u32 passIndex = 0; passIndex < passData.size(); ++passIndex) {
-        indegrees[passIndex] = static_cast<u32>(passData[passIndex].dependencies.size());
+        indegrees[passIndex] =
+            static_cast<u32>(passData[passIndex].dependencies.size());
         for (const u32 dependency : passData[passIndex].dependencies) {
             AddUnique(dependents[dependency], passIndex);
         }
@@ -166,9 +189,11 @@ void AddUnique(std::vector<u32>& values, u32 value) {
         const u32 passIndex = ready.front();
         ready.pop_front();
         order.push_back(passIndex);
+
         for (const u32 dependent : dependents[passIndex]) {
-            if (--indegrees[passIndex] == 0) {
-                const auto position = std::upper_bound(ready.begin(), ready.end(), dependent);
+            if (--indegrees[dependent] == 0) {
+                const auto position =
+                    std::upper_bound(ready.begin(), ready.end(), dependent);
                 ready.insert(position, dependent);
             }
         }
@@ -176,7 +201,7 @@ void AddUnique(std::vector<u32>& values, u32 value) {
     return order;
 }
 
-} // namesapce
+} // namespace
 
 std::string RHIRenderGraphCompileResult::ErrorMessage() const {
     std::ostringstream message;
@@ -189,7 +214,7 @@ std::string RHIRenderGraphCompileResult::ErrorMessage() const {
     return message.str();
 }
 
-b8 ValidateRHIRenderGraphSubmissions(
+bool ValidateRHIRenderGraphSubmissions(
     const RHIRenderGraphDesc& graph,
     const RHIRenderGraphExecutionPlan& plan,
     std::span<const RHIQueueSubmitDesc> submissions,
@@ -200,11 +225,14 @@ b8 ValidateRHIRenderGraphSubmissions(
         }
         return false;
     };
+
+    // 空 submissions 表示把同步和提交策略交给后端；这是普通 RenderGraph 帧的推荐路径。
     if (submissions.empty()) {
         return true;
     }
     if (submissions.size() != 1) {
-        return fail("RenderGraph currently records one command stream per frame; multiple queue submissions are not supported yet");
+        return fail(
+            "RenderGraph currently records one command stream per frame; multiple queue submissions are not supported yet");
     }
 
     const std::vector<std::string>& passNames = submissions[0].passNames;
@@ -212,23 +240,30 @@ b8 ValidateRHIRenderGraphSubmissions(
         return true;
     }
     if (passNames.size() != plan.passes.size()) {
-        return fail("RHIQueueSubmitDesc::passNames must contain every live RenderGraph pass exactly once");
+        return fail(
+            "RHIQueueSubmitDesc::passNames must contain every live RenderGraph pass exactly once");
     }
+
     for (u32 compiledIndex = 0; compiledIndex < plan.passes.size(); ++compiledIndex) {
         const u32 sourcePassIndex = plan.passes[compiledIndex].sourcePassIndex;
-        if (compiledIndex >= graph.passes.size()) {
+        if (sourcePassIndex >= graph.passes.size()) {
             return fail("Compiled RenderGraph pass index is out of range");
         }
-        const std::string& expectedName = graph.passes[compiledIndex].name;
+        const std::string& expectedName = graph.passes[sourcePassIndex].name;
         if (passNames[compiledIndex] != expectedName) {
-            return fail("RHIQueueSubmitDesc::passNames must follow compiled dependency order; expected '" +
+            return fail(
+                "RHIQueueSubmitDesc::passNames must follow compiled dependency order; expected '" +
                 expectedName + "' at position " + std::to_string(compiledIndex));
         }
     }
     return true;
 }
 
-u64 HashRHIRenderGraphStructure(const RHIRenderGraphDesc& graph, std::span<const RHIRenderPassWorkload> workloads) noexcept {
+u64 HashRHIRenderGraphStructure(
+    const RHIRenderGraphDesc& graph,
+    std::span<const RHIRenderPassWorkload> workloads) noexcept {
+    // 只加入会影响校验、依赖、裁剪、barrier 或物理槽分配的数据。外部句柄数值、
+    // clear value、viewport 和具体 draw 参数每帧可变，不应让缓存失效。
     u64 hash = FNV_OFFSET;
     HashValue(hash, graph.buffers.size());
     for (const RHIRenderGraphBufferDesc& resource : graph.buffers) {
@@ -339,7 +374,9 @@ u64 HashRHIRenderGraphStructure(const RHIRenderGraphDesc& graph, std::span<const
     return hash;
 }
 
-RHIRenderGraphCompileResult CompileRHIRenderGraph(const RHIRenderGraphDesc& graph, std::span<const RHIRenderPassWorkload> workloads) {
+RHIRenderGraphCompileResult CompileRHIRenderGraph(
+    const RHIRenderGraphDesc& graph,
+    std::span<const RHIRenderPassWorkload> workloads) {
     // 阶段 0：预分配最终计划中与声明数量一一对应的数组。
     RHIRenderGraphCompileResult result{};
     result.plan.structureHash = HashRHIRenderGraphStructure(graph, workloads);
