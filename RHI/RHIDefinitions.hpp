@@ -36,7 +36,7 @@ namespace RHI {
  * - 后端可以根据 RHICapabilities 降级或选择不同实现路径。
  */
 /// 无效数组下标，常用于 optional index 或查找失败的返回值。
-inline constexpr u32 RHI_INVALID_INDEX = std::numeric_limits<u32>::max();
+inline constexpr u64 RHI_INVALID_INDEX = std::numeric_limits<u64>::max();
 
 /// 0 被保留为无效渲染资源句柄，真实后端资源句柄从非 0 值开始分配。
 inline constexpr u64 RHI_INVALID_HANDLE_VALUE = 0;
@@ -120,24 +120,16 @@ template <typename Enum>
 concept RHIEnumFlags = std::is_enum_v<Enum> && RHIEnableEnumFlags<Enum>::value;
 
 template <RHIEnumFlags Enum>
-[[nodiscard]] constexpr Enum RHIEnumBitOr(Enum lhs, Enum rhs) noexcept {
-    return static_cast<Enum>(RHIEnumToUnderlying(lhs) | RHIEnumToUnderlying(rhs));
-}
+[[nodiscard]] constexpr Enum RHIEnumBitOr(Enum lhs, Enum rhs) noexcept { return static_cast<Enum>(RHIEnumToUnderlying(lhs) | RHIEnumToUnderlying(rhs)); }
 
 template <RHIEnumFlags Enum>
-[[nodiscard]] constexpr Enum RHIEnumBitAnd(Enum lhs, Enum rhs) noexcept {
-    return static_cast<Enum>(RHIEnumToUnderlying(lhs) & RHIEnumToUnderlying(rhs));
-}
+[[nodiscard]] constexpr Enum RHIEnumBitAnd(Enum lhs, Enum rhs) noexcept { return static_cast<Enum>(RHIEnumToUnderlying(lhs) & RHIEnumToUnderlying(rhs)); }
 
 template <RHIEnumFlags Enum>
-[[nodiscard]] constexpr bool RHIHasAny(Enum value, Enum flags) noexcept {
-    return (RHIEnumToUnderlying(value) & RHIEnumToUnderlying(flags)) != 0;
-}
+[[nodiscard]] constexpr bool RHIHasAny(Enum value, Enum flags) noexcept { return (RHIEnumToUnderlying(value) & RHIEnumToUnderlying(flags)) != 0; }
 
 template <RHIEnumFlags Enum>
-[[nodiscard]] constexpr bool RHIHasAll(Enum value, Enum flags) noexcept {
-    return (RHIEnumToUnderlying(value) & RHIEnumToUnderlying(flags)) == RHIEnumToUnderlying(flags);
-}
+[[nodiscard]] constexpr bool RHIHasAll(Enum value, Enum flags) noexcept { return (RHIEnumToUnderlying(value) & RHIEnumToUnderlying(flags)) == RHIEnumToUnderlying(flags); }
 
 /// 当前后端使用的图形 API，用于能力查询、日志和后端分支。
 enum class RHIGraphicsAPI : u8 {
@@ -174,44 +166,34 @@ enum class RHIValidationMode : u8 {
 
 /// 引擎希望启用的渲染特性位。后端初始化时可根据设备能力做裁剪或报错。
 enum class RHIRenderFeature : u64 {
-    None = 0,                                ///< 不请求任何额外功能。
-    Compute = 1ull << 0,                     ///< 启用 compute shader 和 compute queue/pass。
-    GeometryShader = 1ull << 1,              ///< 启用 geometry shader 阶段。
-    Tessellation = 1ull << 2,                ///< 启用 tessellation control/evaluation shader 阶段。
-    MeshShader = 1ull << 3,                  ///< 启用 task/mesh shader 现代几何管线。
-    RayTracing = 1ull << 4,                  ///< 启用硬件光追相关资源和 shader 阶段。
-    Bindless = 1ull << 5,                    ///< 启用大规模资源数组和 shader 动态索引。
-    SamplerAnisotropy = 1ull << 6,           ///< 启用各向异性纹理过滤。
-    SamplerCompare = 1ull << 7,              ///< 启用比较采样器，常用于 shadow map。
-    TimestampQuery = 1ull << 8,              ///< 启用 GPU timestamp 查询，用于性能计时。
-    OcclusionQuery = 1ull << 9,              ///< 启用遮挡查询，用于可见性判断。
-    PipelineStatisticsQuery = 1ull << 10,    ///< 启用管线统计查询，例如 shader 调用次数。
-    IndirectDraw = 1ull << 11,               ///< 启用 GPU 参数驱动的 indirect draw/dispatch。
-    DrawIndirectCount = 1ull << 12,          ///< 启用 GPU count buffer 控制 indirect draw 数量。
-    DynamicRendering = 1ull << 13,           ///< 启用无传统 render pass/framebuffer 的动态渲染路径。
-    ConservativeRasterization = 1ull << 14,  ///< 启用保守光栅化，常用于遮挡或体素化。
-    TextureCompressionBC = 1ull << 15,       ///< 启用 BC/DXT 系列压缩纹理格式。
-    TextureCompressionETC2 = 1ull << 16,     ///< 启用 ETC2 压缩纹理格式，移动端常见。
-    TextureCompressionASTC = 1ull << 17,     ///< 启用 ASTC 压缩纹理格式，移动端和现代 GPU 常见。
-    Multiview = 1ull << 18,                  ///< 启用单次 pass 渲染多个 view，常用于 VR/立体渲染。
-    DebugMarkers = 1ull << 19                ///< 启用 GPU 调试标记和对象命名。
+    None                        = 0,            ///< 不请求任何额外功能。
+    Compute                     = 1ull << 0,    ///< 启用 compute shader 和 compute queue/pass。
+    GeometryShader              = 1ull << 1,    ///< 启用 geometry shader 阶段。
+    Tessellation                = 1ull << 2,    ///< 启用 tessellation control/evaluation shader 阶段。
+    MeshShader                  = 1ull << 3,    ///< 启用 task/mesh shader 现代几何管线。
+    RayTracing                  = 1ull << 4,    ///< 启用硬件光追相关资源和 shader 阶段。
+    Bindless                    = 1ull << 5,    ///< 启用大规模资源数组和 shader 动态索引。
+    SamplerAnisotropy           = 1ull << 6,    ///< 启用各向异性纹理过滤。
+    SamplerCompare              = 1ull << 7,    ///< 启用比较采样器，常用于 shadow map。
+    TimestampQuery              = 1ull << 8,    ///< 启用 GPU timestamp 查询，用于性能计时。
+    OcclusionQuery              = 1ull << 9,    ///< 启用遮挡查询，用于可见性判断。
+    PipelineStatisticsQuery     = 1ull << 10,   ///< 启用管线统计查询，例如 shader 调用次数。
+    IndirectDraw                = 1ull << 11,   ///< 启用 GPU 参数驱动的 indirect draw/dispatch。
+    DrawIndirectCount           = 1ull << 12,   ///< 启用 GPU count buffer 控制 indirect draw 数量。
+    DynamicRendering            = 1ull << 13,   ///< 启用无传统 render pass/framebuffer 的动态渲染路径。
+    ConservativeRasterization   = 1ull << 14,   ///< 启用保守光栅化，常用于遮挡或体素化。
+    TextureCompressionBC        = 1ull << 15,   ///< 启用 BC/DXT 系列压缩纹理格式。
+    TextureCompressionETC2      = 1ull << 16,   ///< 启用 ETC2 压缩纹理格式，移动端常见。
+    TextureCompressionASTC      = 1ull << 17,   ///< 启用 ASTC 压缩纹理格式，移动端和现代 GPU 常见。
+    Multiview                   = 1ull << 18,   ///< 启用单次 pass 渲染多个 view，常用于 VR/立体渲染。
+    DebugMarkers                = 1ull << 19    ///< 启用 GPU 调试标记和对象命名。
 };
 
 template <>
 struct RHIEnableEnumFlags<RHIRenderFeature> : std::true_type {};
-
-[[nodiscard]] constexpr RHIRenderFeature operator|(RHIRenderFeature lhs, RHIRenderFeature rhs) noexcept {
-    return RHIEnumBitOr(lhs, rhs);
-}
-
-[[nodiscard]] constexpr RHIRenderFeature operator&(RHIRenderFeature lhs, RHIRenderFeature rhs) noexcept {
-    return RHIEnumBitAnd(lhs, rhs);
-}
-
-constexpr RHIRenderFeature& operator|=(RHIRenderFeature& lhs, RHIRenderFeature rhs) noexcept {
-    lhs = lhs | rhs;
-    return lhs;
-}
+[[nodiscard]] constexpr RHIRenderFeature operator|(RHIRenderFeature lhs, RHIRenderFeature rhs) noexcept { return RHIEnumBitOr(lhs, rhs); }
+[[nodiscard]] constexpr RHIRenderFeature operator&(RHIRenderFeature lhs, RHIRenderFeature rhs) noexcept { return RHIEnumBitAnd(lhs, rhs); }
+constexpr RHIRenderFeature& operator|=(RHIRenderFeature& lhs, RHIRenderFeature rhs) noexcept { lhs = lhs | rhs; return lhs; }
 
 /// 渲染后端初始化参数。窗口原生句柄由平台层保存，这里只描述渲染器自己的需求。
 struct RHIBackendDesc {
@@ -381,7 +363,7 @@ enum class RHIResourceState : u16 {
     CopyDestination,             ///< 作为拷贝目标写入，用于上传、清理、resolve/blit destination。
     VertexBuffer,                ///< 作为顶点缓冲读取，供输入装配阶段获取 vertex attribute。
     IndexBuffer,                 ///< 作为索引缓冲读取，供 indexed draw 获取索引数据。
-    ConstantBuffer,              ///< 作为常量/uniform buffer 读取，供 shader 访问只读小块参数。
+    ConstantBuffer,              ///< 作为constant/uniform buffer 读取，供 shader 访问只读小块参数。
     ShaderRead,                  ///< 作为 shader 只读资源访问，例如 sampled texture、SRV 或只读 storage buffer。
     ShaderWrite,                 ///< 作为 shader 可写资源访问，例如 UAV、storage texture 或 writable storage buffer。
     RenderTarget,                ///< 作为 color attachment/render target 写入，也可能支持同 pass 内读取。
@@ -398,85 +380,65 @@ enum class RHIResourceState : u16 {
 
 /// GPU 管线阶段位。需要精确同步时可配合 RHIAccessFlags 构造 barrier。
 enum class RHIPipelineStage : u64 {
-    None = 0,                                 ///< 不指定任何管线阶段；常用于空 barrier 或由状态自动推导。
-    TopOfPipe = 1ull << 0,                    ///< 管线最开始的同步点，用于等待命令进入 GPU 执行流。
-    DrawIndirect = 1ull << 1,                 ///< 读取 indirect draw/dispatch 参数的阶段。
-    VertexInput = 1ull << 2,                  ///< 读取 vertex/index buffer 并装配图元的阶段。
-    VertexShader = 1ull << 3,                 ///< 执行 vertex shader 的阶段。
-    TessControlShader = 1ull << 4,            ///< 执行 tessellation control/hull shader 的阶段。
-    TessEvaluationShader = 1ull << 5,         ///< 执行 tessellation evaluation/domain shader 的阶段。
-    GeometryShader = 1ull << 6,               ///< 执行 geometry shader 的阶段。
-    FragmentShader = 1ull << 7,               ///< 执行 fragment/pixel shader 的阶段。
-    EarlyFragmentTests = 1ull << 8,           ///< 早期深度/模板测试阶段，可在片元着色前发生。
-    LateFragmentTests = 1ull << 9,            ///< 后期深度/模板测试阶段，可在片元着色后发生。
-    ColorAttachmentOutput = 1ull << 10,       ///< color attachment blend、logic op 和写入阶段。
-    ComputeShader = 1ull << 11,               ///< 执行 compute shader dispatch 的阶段。
-    Transfer = 1ull << 12,                    ///< 执行 copy、blit、clear、resolve 等传输命令的阶段。
-    BottomOfPipe = 1ull << 13,                ///< 管线末尾同步点，常用于 timestamp 或等待前序命令完成。
-    Host = 1ull << 14,                        ///< CPU/主机访问阶段，用于 map、readback 或上传内存同步。
-    RayTracingShader = 1ull << 15,            ///< 执行 ray generation、hit、miss 等光追 shader 的阶段。
-    AccelerationStructureBuild = 1ull << 16,  ///< 构建或更新光追加速结构的阶段。
-    TaskShader = 1ull << 17,                  ///< 执行 task/amplification shader 的阶段。
-    MeshShader = 1ull << 18,                  ///< 执行 mesh shader 并生成图元的阶段。
-    AllGraphics = 1ull << 19,                 ///< 覆盖所有图形管线阶段的聚合标志。
-    AllCommands = 1ull << 20                  ///< 覆盖队列中所有命令和阶段的保守同步标志。
+    None                        = 0,            ///< 不指定任何管线阶段；常用于空 barrier 或由状态自动推导。
+    TopOfPipe                   = 1ull << 0,    ///< 管线最开始的同步点，用于等待命令进入 GPU 执行流。
+    DrawIndirect                = 1ull << 1,    ///< 读取 indirect draw/dispatch 参数的阶段。
+    VertexInput                 = 1ull << 2,    ///< 读取 vertex/index buffer 并装配图元的阶段。
+    VertexShader                = 1ull << 3,    ///< 执行 vertex shader 的阶段。
+    TessControlShader           = 1ull << 4,    ///< 执行 tessellation control/hull shader 的阶段。
+    TessEvaluationShader        = 1ull << 5,    ///< 执行 tessellation evaluation/domain shader 的阶段。
+    GeometryShader              = 1ull << 6,    ///< 执行 geometry shader 的阶段。
+    FragmentShader              = 1ull << 7,    ///< 执行 fragment/pixel shader 的阶段。
+    EarlyFragmentTests          = 1ull << 8,    ///< 早期深度/模板测试阶段，可在片元着色前发生。
+    LateFragmentTests           = 1ull << 9,    ///< 后期深度/模板测试阶段，可在片元着色后发生。
+    ColorAttachmentOutput       = 1ull << 10,   ///< color attachment blend、logic op 和写入阶段。
+    ComputeShader               = 1ull << 11,   ///< 执行 compute shader dispatch 的阶段。
+    Transfer                    = 1ull << 12,   ///< 执行 copy、blit、clear、resolve 等传输命令的阶段。
+    BottomOfPipe                = 1ull << 13,   ///< 管线末尾同步点，常用于 timestamp 或等待前序命令完成。
+    Host                        = 1ull << 14,   ///< CPU/主机访问阶段，用于 map、readback 或上传内存同步。
+    RayTracingShader            = 1ull << 15,   ///< 执行 ray generation、hit、miss 等光追 shader 的阶段。
+    AccelerationStructureBuild  = 1ull << 16,   ///< 构建或更新光追加速结构的阶段。
+    TaskShader                  = 1ull << 17,   ///< 执行 task/amplification shader 的阶段。
+    MeshShader                  = 1ull << 18,   ///< 执行 mesh shader 并生成图元的阶段。
+    AllGraphics                 = 1ull << 19,   ///< 覆盖所有图形管线阶段的聚合标志。
+    AllCommands                 = 1ull << 20    ///< 覆盖队列中所有命令和阶段的保守同步标志。
 };
 
 template <>
 struct RHIEnableEnumFlags<RHIPipelineStage> : std::true_type {};
-
-[[nodiscard]] constexpr RHIPipelineStage operator|(RHIPipelineStage lhs, RHIPipelineStage rhs) noexcept {
-    return RHIEnumBitOr(lhs, rhs);
-}
-
-[[nodiscard]] constexpr RHIPipelineStage operator&(RHIPipelineStage lhs, RHIPipelineStage rhs) noexcept {
-    return RHIEnumBitAnd(lhs, rhs);
-}
-
-constexpr RHIPipelineStage& operator|=(RHIPipelineStage& lhs, RHIPipelineStage rhs) noexcept {
-    lhs = lhs | rhs;
-    return lhs;
-}
+[[nodiscard]] constexpr RHIPipelineStage operator|(RHIPipelineStage lhs, RHIPipelineStage rhs) noexcept { return RHIEnumBitOr(lhs, rhs); }
+[[nodiscard]] constexpr RHIPipelineStage operator&(RHIPipelineStage lhs, RHIPipelineStage rhs) noexcept { return RHIEnumBitAnd(lhs, rhs); }
+constexpr RHIPipelineStage& operator|=(RHIPipelineStage& lhs, RHIPipelineStage rhs) noexcept { lhs = lhs | rhs; return lhs; }
 
 /// GPU 资源访问类型位。比 RHIResourceState 更接近后端 barrier 所需的 access mask。
 enum class RHIAccessFlags : u64 {
-    None = 0,                                ///< 不指定访问类型；常用于无内存依赖或由 RHIResourceState 自动推导。
-    IndirectCommandRead = 1ull << 0,         ///< GPU 读取 indirect draw/dispatch 参数。
-    IndexRead = 1ull << 1,                   ///< 输入装配阶段读取 index buffer。
-    VertexAttributeRead = 1ull << 2,         ///< 输入装配阶段读取 vertex attribute 数据。
-    UniformRead = 1ull << 3,                 ///< shader 读取 uniform/constant buffer。
-    InputAttachmentRead = 1ull << 4,         ///< fragment shader 读取 input attachment/subpass input。
-    ShaderRead = 1ull << 5,                  ///< shader 读取 sampled texture、只读 buffer 或其他 SRV 资源。
-    ShaderWrite = 1ull << 6,                 ///< shader 写入 storage buffer、storage texture 或 UAV 资源。
-    ColorAttachmentRead = 1ull << 7,         ///< color attachment 读取，常见于 blending 或 framebuffer fetch。
-    ColorAttachmentWrite = 1ull << 8,        ///< color attachment 写入渲染目标。
-    DepthStencilRead = 1ull << 9,            ///< depth/stencil attachment 或 depth texture 的只读访问。
-    DepthStencilWrite = 1ull << 10,          ///< depth/stencil attachment 的写入访问。
-    TransferRead = 1ull << 11,               ///< copy/blit/resolve/clear 等传输命令读取资源。
-    TransferWrite = 1ull << 12,              ///< copy/blit/resolve/clear 等传输命令写入资源。
-    HostRead = 1ull << 13,                   ///< CPU 从映射内存或读回资源读取数据。
-    HostWrite = 1ull << 14,                  ///< CPU 向映射内存或上传资源写入数据。
-    MemoryRead = 1ull << 15,                 ///< 泛化内存读取，用于无法细分或需要保守同步的 barrier。
-    MemoryWrite = 1ull << 16,                ///< 泛化内存写入，用于无法细分或需要保守同步的 barrier。
-    AccelerationStructureRead = 1ull << 17,  ///< ray tracing 或构建过程读取加速结构。
-    AccelerationStructureWrite = 1ull << 18  ///< 构建或更新过程写入加速结构。
+    None                        = 0,            ///< 不指定访问类型；常用于无内存依赖或由 RHIResourceState 自动推导。
+    IndirectCommandRead         = 1ull << 0,    ///< GPU 读取 indirect draw/dispatch 参数。
+    IndexRead                   = 1ull << 1,    ///< 输入装配阶段读取 index buffer。
+    VertexAttributeRead         = 1ull << 2,    ///< 输入装配阶段读取 vertex attribute 数据。
+    UniformRead                 = 1ull << 3,    ///< shader 读取 uniform/constant buffer。
+    InputAttachmentRead         = 1ull << 4,    ///< fragment shader 读取 input attachment/subpass input。
+    ShaderRead                  = 1ull << 5,    ///< shader 读取 sampled texture、只读 buffer 或其他 SRV 资源。
+    ShaderWrite                 = 1ull << 6,    ///< shader 写入 storage buffer、storage texture 或 UAV 资源。
+    ColorAttachmentRead         = 1ull << 7,    ///< color attachment 读取，常见于 blending 或 framebuffer fetch。
+    ColorAttachmentWrite        = 1ull << 8,    ///< color attachment 写入渲染目标。
+    DepthStencilRead            = 1ull << 9,    ///< depth/stencil attachment 或 depth texture 的只读访问。
+    DepthStencilWrite           = 1ull << 10,   ///< depth/stencil attachment 的写入访问。
+    TransferRead                = 1ull << 11,   ///< copy/blit/resolve/clear 等传输命令读取资源。
+    TransferWrite               = 1ull << 12,   ///< copy/blit/resolve/clear 等传输命令写入资源。
+    HostRead                    = 1ull << 13,   ///< CPU 从映射内存或读回资源读取数据。
+    HostWrite                   = 1ull << 14,   ///< CPU 向映射内存或上传资源写入数据。
+    MemoryRead                  = 1ull << 15,   ///< 泛化内存读取，用于无法细分或需要保守同步的 barrier。
+    MemoryWrite                 = 1ull << 16,   ///< 泛化内存写入，用于无法细分或需要保守同步的 barrier。
+    AccelerationStructureRead   = 1ull << 17,   ///< ray tracing 或构建过程读取加速结构。
+    AccelerationStructureWrite  = 1ull << 18    ///< 构建或更新过程写入加速结构。
 };
 
 template <>
 struct RHIEnableEnumFlags<RHIAccessFlags> : std::true_type {};
-
-[[nodiscard]] constexpr RHIAccessFlags operator|(RHIAccessFlags lhs, RHIAccessFlags rhs) noexcept {
-    return RHIEnumBitOr(lhs, rhs);
-}
-
-[[nodiscard]] constexpr RHIAccessFlags operator&(RHIAccessFlags lhs, RHIAccessFlags rhs) noexcept {
-    return RHIEnumBitAnd(lhs, rhs);
-}
-
-constexpr RHIAccessFlags& operator|=(RHIAccessFlags& lhs, RHIAccessFlags rhs) noexcept {
-    lhs = lhs | rhs;
-    return lhs;
-}
+[[nodiscard]] constexpr RHIAccessFlags operator|(RHIAccessFlags lhs, RHIAccessFlags rhs) noexcept { return RHIEnumBitOr(lhs, rhs); }
+[[nodiscard]] constexpr RHIAccessFlags operator&(RHIAccessFlags lhs, RHIAccessFlags rhs) noexcept { return RHIEnumBitAnd(lhs, rhs); }
+constexpr RHIAccessFlags& operator|=(RHIAccessFlags& lhs, RHIAccessFlags rhs) noexcept { lhs = lhs | rhs; return lhs; }
 
 /// 二维尺寸，常用于窗口、swapchain、viewport/scissor 和 2D 纹理。
 struct RHIExtent2D {
@@ -542,141 +504,91 @@ struct RHIClearValue {
 
 /// texture 子资源 aspect 位，用于区分 color/depth/stencil/plane。
 enum class RHITextureAspect : u32 {
-    None = 0,           ///< 不指定任何 aspect；用于空范围或由格式推导前的占位值。
-    Color = 1u << 0,    ///< color aspect，适用于普通颜色纹理和 color attachment。
-    Depth = 1u << 1,    ///< depth aspect，适用于深度纹理或 depth-stencil 格式中的深度平面。
-    Stencil = 1u << 2,  ///< stencil aspect，适用于模板纹理或 depth-stencil 格式中的模板平面。
-    Plane0 = 1u << 3,   ///< 多平面格式的第 0 平面，例如 YUV 图像的主亮度平面。
-    Plane1 = 1u << 4,   ///< 多平面格式的第 1 平面，例如 YUV 图像的色度平面。
-    Plane2 = 1u << 5,   ///< 多平面格式的第 2 平面，用于三平面 YUV 等格式。
-    All = 0xFFFFFFFFu   ///< 覆盖资源所有可用 aspect；后端可按实际格式展开。
+    None    = 0,            ///< 不指定任何 aspect；用于空范围或由格式推导前的占位值。
+    Color   = 1u << 0,      ///< color aspect，适用于普通颜色纹理和 color attachment。
+    Depth   = 1u << 1,      ///< depth aspect，适用于深度纹理或 depth-stencil 格式中的深度平面。
+    Stencil = 1u << 2,      ///< stencil aspect，适用于模板纹理或 depth-stencil 格式中的模板平面。
+    Plane0  = 1u << 3,      ///< 多平面格式的第 0 平面，例如 YUV 图像的主亮度平面。
+    Plane1  = 1u << 4,      ///< 多平面格式的第 1 平面，例如 YUV 图像的色度平面。
+    Plane2  = 1u << 5,      ///< 多平面格式的第 2 平面，用于三平面 YUV 等格式。
+    All     = 0xFFFFFFFFu   ///< 覆盖资源所有可用 aspect；后端可按实际格式展开。
 };
 
 template <>
 struct RHIEnableEnumFlags<RHITextureAspect> : std::true_type {};
-
-[[nodiscard]] constexpr RHITextureAspect operator|(RHITextureAspect lhs, RHITextureAspect rhs) noexcept {
-    return RHIEnumBitOr(lhs, rhs);
-}
-
-[[nodiscard]] constexpr RHITextureAspect operator&(RHITextureAspect lhs, RHITextureAspect rhs) noexcept {
-    return RHIEnumBitAnd(lhs, rhs);
-}
-
-constexpr RHITextureAspect& operator|=(RHITextureAspect& lhs, RHITextureAspect rhs) noexcept {
-    lhs = lhs | rhs;
-    return lhs;
-}
+[[nodiscard]] constexpr RHITextureAspect operator|(RHITextureAspect lhs, RHITextureAspect rhs) noexcept { return RHIEnumBitOr(lhs, rhs); }
+[[nodiscard]] constexpr RHITextureAspect operator&(RHITextureAspect lhs, RHITextureAspect rhs) noexcept { return RHIEnumBitAnd(lhs, rhs); }
+constexpr RHITextureAspect& operator|=(RHITextureAspect& lhs, RHITextureAspect rhs) noexcept { lhs = lhs | rhs; return lhs; }
 
 /// buffer 的用途位。创建 buffer 时必须声明后续会如何使用，显式 API 会用它设置 usage flags。
 enum class RHIBufferUsage : u32 {
-    None = 0,                       ///< 未声明用途；只适合默认值，真实 buffer 创建通常应指定至少一个用途。
-    TransferSource = 1u << 0,       ///< 可作为 copy/blit/readback 的源 buffer。
+    None                = 0,        ///< 未声明用途；只适合默认值，真实 buffer 创建通常应指定至少一个用途。
+    TransferSource      = 1u << 0,  ///< 可作为 copy/blit/readback 的源 buffer。0
     TransferDestination = 1u << 1,  ///< 可作为 upload、copy 或清零操作的目标 buffer。
-    Vertex = 1u << 2,               ///< 可绑定为 vertex buffer，供输入装配阶段读取顶点数据。
-    Index = 1u << 3,                ///< 可绑定为 index buffer，供 indexed draw 读取索引数据。
-    Uniform = 1u << 4,              ///< 可绑定为 uniform/constant buffer，供 shader 读取常量参数。
-    Storage = 1u << 5,              ///< 可绑定为 storage/UAV buffer，供 shader 读写结构化或原始数据。
-    Indirect = 1u << 6,             ///< 可作为 indirect draw/dispatch 参数 buffer 由 GPU 命令处理器读取。
+    Vertex              = 1u << 2,  ///< 可绑定为 vertex buffer，供输入装配阶段读取顶点数据。
+    Index               = 1u << 3,  ///< 可绑定为 index buffer，供 indexed draw 读取索引数据。
+    Uniform             = 1u << 4,  ///< 可绑定为 uniform/constant buffer，供 shader 读取常量参数。
+    Storage             = 1u << 5,  ///< 可绑定为 storage/UAV buffer，供 shader 读写结构化或原始数据。
+    Indirect            = 1u << 6,  ///< 可作为 indirect draw/dispatch 参数 buffer 由 GPU 命令处理器读取。
     ShaderDeviceAddress = 1u << 7   ///< 允许 shader 通过设备地址访问 buffer，常用于 bindless 或光追数据。
 };
 
 template <>
 struct RHIEnableEnumFlags<RHIBufferUsage> : std::true_type {};
-
-[[nodiscard]] constexpr RHIBufferUsage operator|(RHIBufferUsage lhs, RHIBufferUsage rhs) noexcept {
-    return RHIEnumBitOr(lhs, rhs);
-}
-
-[[nodiscard]] constexpr RHIBufferUsage operator&(RHIBufferUsage lhs, RHIBufferUsage rhs) noexcept {
-    return RHIEnumBitAnd(lhs, rhs);
-}
-
-constexpr RHIBufferUsage& operator|=(RHIBufferUsage& lhs, RHIBufferUsage rhs) noexcept {
-    lhs = lhs | rhs;
-    return lhs;
-}
+[[nodiscard]] constexpr RHIBufferUsage operator|(RHIBufferUsage lhs, RHIBufferUsage rhs) noexcept { return RHIEnumBitOr(lhs, rhs); }
+[[nodiscard]] constexpr RHIBufferUsage operator&(RHIBufferUsage lhs, RHIBufferUsage rhs) noexcept { return RHIEnumBitAnd(lhs, rhs); }
+constexpr RHIBufferUsage& operator|=(RHIBufferUsage& lhs, RHIBufferUsage rhs) noexcept { lhs = lhs | rhs; return lhs; }
 
 /// buffer 创建附加标志，用于表达生命周期和后端内存选择提示。
 enum class RHIBufferCreateFlags : u32 {
-    None = 0,                   ///< 无额外创建要求，使用后端默认分配策略。
+    None            = 0,        ///< 无额外创建要求，使用后端默认分配策略。
     DedicatedMemory = 1u << 0,  ///< 倾向单独分配内存，适合大 buffer 或需要避免与其他资源混用的场景。
-    SparseBinding = 1u << 1,    ///< 请求稀疏绑定/虚拟内存能力，允许按页提交 buffer 存储。
-    RingBuffer = 1u << 2,       ///< 表示 buffer 用作环形分配区，常用于动态 uniform 或 per-frame 上传。
-    Transient = 1u << 3         ///< 表示短生命周期临时 buffer，资源分配器可优先复用或延迟实际分配。
+    SparseBinding   = 1u << 1,  ///< 请求稀疏绑定/虚拟内存能力，允许按页提交 buffer 存储。
+    RingBuffer      = 1u << 2,  ///< 表示 buffer 用作环形分配区，常用于动态 uniform 或 per-frame 上传。
+    Transient       = 1u << 3   ///< 表示短生命周期临时 buffer，资源分配器可优先复用或延迟实际分配。
 };
 
 template <>
 struct RHIEnableEnumFlags<RHIBufferCreateFlags> : std::true_type {};
-
-[[nodiscard]] constexpr RHIBufferCreateFlags operator|(RHIBufferCreateFlags lhs, RHIBufferCreateFlags rhs) noexcept {
-    return RHIEnumBitOr(lhs, rhs);
-}
-
-[[nodiscard]] constexpr RHIBufferCreateFlags operator&(RHIBufferCreateFlags lhs, RHIBufferCreateFlags rhs) noexcept {
-    return RHIEnumBitAnd(lhs, rhs);
-}
-
-constexpr RHIBufferCreateFlags& operator|=(RHIBufferCreateFlags& lhs, RHIBufferCreateFlags rhs) noexcept {
-    lhs = lhs | rhs;
-    return lhs;
-}
+[[nodiscard]] constexpr RHIBufferCreateFlags operator|(RHIBufferCreateFlags lhs, RHIBufferCreateFlags rhs) noexcept { return RHIEnumBitOr(lhs, rhs); }
+[[nodiscard]] constexpr RHIBufferCreateFlags operator&(RHIBufferCreateFlags lhs, RHIBufferCreateFlags rhs) noexcept { return RHIEnumBitAnd(lhs, rhs); }
+constexpr RHIBufferCreateFlags& operator|=(RHIBufferCreateFlags& lhs, RHIBufferCreateFlags rhs) noexcept { lhs = lhs | rhs; return lhs; }
 
 /// texture/image 的用途位。一个 texture 可以同时是采样贴图、渲染目标或拷贝目标。
 enum class RHITextureUsage : u32 {
-    None = 0,                          ///< 未声明用途；只适合默认值，真实 texture 创建通常应指定至少一个用途。
-    TransferSource = 1u << 0,          ///< 可作为 copy、blit、resolve 或 readback 的源 texture。
-    TransferDestination = 1u << 1,     ///< 可作为 upload、copy、blit、resolve 或 clear 的目标 texture。
-    Sampled = 1u << 2,                 ///< 可创建 sampled view 并在 shader 中作为只读纹理采样。
-    Storage = 1u << 3,                 ///< 可创建 storage image/UAV view 并在 shader 中随机读写。
-    ColorAttachment = 1u << 4,         ///< 可作为 color render target 写入。
-    DepthStencilAttachment = 1u << 5,  ///< 可作为 depth-stencil attachment 参与深度/模板测试。
-    Present = 1u << 6,                 ///< 可作为 swapchain/backbuffer image 交给窗口系统呈现。
-    Transient = 1u << 7                ///< 表示临时 attachment，后端可使用 lazily allocated 或 RenderGraph 复用策略。
+    None                    = 0,        ///< 未声明用途；只适合默认值，真实 texture 创建通常应指定至少一个用途。
+    TransferSource          = 1u << 0,  ///< 可作为 copy、blit、resolve 或 readback 的源 texture。
+    TransferDestination     = 1u << 1,  ///< 可作为 upload、copy、blit、resolve 或 clear 的目标 texture。
+    Sampled                 = 1u << 2,  ///< 可创建 sampled view 并在 shader 中作为只读纹理采样。
+    Storage                 = 1u << 3,  ///< 可创建 storage image/UAV view 并在 shader 中随机读写。
+    ColorAttachment         = 1u << 4,  ///< 可作为 color render target 写入。
+    DepthStencilAttachment  = 1u << 5,  ///< 可作为 depth-stencil attachment 参与深度/模板测试。
+    Present                 = 1u << 6,  ///< 可作为 swapchain/backbuffer image 交给窗口系统呈现。
+    Transient               = 1u << 7   ///< 表示临时 attachment，后端可使用 lazily allocated 或 RenderGraph 复用策略。
 };
 
 template <>
 struct RHIEnableEnumFlags<RHITextureUsage> : std::true_type {};
-
-[[nodiscard]] constexpr RHITextureUsage operator|(RHITextureUsage lhs, RHITextureUsage rhs) noexcept {
-    return RHIEnumBitOr(lhs, rhs);
-}
-
-[[nodiscard]] constexpr RHITextureUsage operator&(RHITextureUsage lhs, RHITextureUsage rhs) noexcept {
-    return RHIEnumBitAnd(lhs, rhs);
-}
-
-constexpr RHITextureUsage& operator|=(RHITextureUsage& lhs, RHITextureUsage rhs) noexcept {
-    lhs = lhs | rhs;
-    return lhs;
-}
+[[nodiscard]] constexpr RHITextureUsage operator|(RHITextureUsage lhs, RHITextureUsage rhs) noexcept { return RHIEnumBitOr(lhs, rhs); }
+[[nodiscard]] constexpr RHITextureUsage operator&(RHITextureUsage lhs, RHITextureUsage rhs) noexcept { return RHIEnumBitAnd(lhs, rhs); }
+constexpr RHITextureUsage& operator|=(RHITextureUsage& lhs, RHITextureUsage rhs) noexcept { lhs = lhs | rhs; return lhs; }
 
 /// texture 创建附加标志，用于表达 cube、格式重解释、稀疏资源等需求。
 enum class RHITextureCreateFlags : u32 {
-    None = 0,                       ///< 无额外创建要求，使用普通 texture 创建路径。
-    CubeCompatible = 1u << 0,       ///< 允许 2D array texture 创建 cube/cube array view，层数需满足 6 的倍数。
-    MutableFormat = 1u << 1,        ///< 允许 view 使用兼容格式重解释底层存储格式。
-    DedicatedMemory = 1u << 2,      ///< 倾向为该 texture 单独分配内存，适合大 render target 或特殊资源。
-    SparseBinding = 1u << 3,        ///< 请求稀疏纹理绑定能力，允许按 tile/page 提交纹理存储。
-    GenerateMips = 1u << 4,         ///< 表示资源创建后需要生成 mipmap，后端可预留必要 usage 和状态。
-    RenderGraphTransient = 1u << 5  ///< 表示 RenderGraph 内部临时纹理，可参与别名和生命周期裁剪。
+    None                    = 0,       ///< 无额外创建要求，使用普通 texture 创建路径。
+    CubeCompatible          = 1u << 0, ///< 允许 2D array texture 创建 cube/cube array view，层数需满足 6 的倍数。
+    MutableFormat           = 1u << 1, ///< 允许 view 使用兼容格式重解释底层存储格式。
+    DedicatedMemory         = 1u << 2, ///< 倾向为该 texture 单独分配内存，适合大 render target 或特殊资源。
+    SparseBinding           = 1u << 3, ///< 请求稀疏纹理绑定能力，允许按 tile/page 提交纹理存储。
+    GenerateMips            = 1u << 4, ///< 表示资源创建后需要生成 mipmap，后端可预留必要 usage 和状态。
+    RenderGraphTransient    = 1u << 5  ///< 表示 RenderGraph 内部临时纹理，可参与别名和生命周期裁剪。
 };
 
 template <>
 struct RHIEnableEnumFlags<RHITextureCreateFlags> : std::true_type {};
-
-[[nodiscard]] constexpr RHITextureCreateFlags operator|(RHITextureCreateFlags lhs, RHITextureCreateFlags rhs) noexcept {
-    return RHIEnumBitOr(lhs, rhs);
-}
-
-[[nodiscard]] constexpr RHITextureCreateFlags operator&(RHITextureCreateFlags lhs, RHITextureCreateFlags rhs) noexcept {
-    return RHIEnumBitAnd(lhs, rhs);
-}
-
-constexpr RHITextureCreateFlags& operator|=(RHITextureCreateFlags& lhs, RHITextureCreateFlags rhs) noexcept {
-    lhs = lhs | rhs;
-    return lhs;
-}
+[[nodiscard]] constexpr RHITextureCreateFlags operator|(RHITextureCreateFlags lhs, RHITextureCreateFlags rhs) noexcept { return RHIEnumBitOr(lhs, rhs); }
+[[nodiscard]] constexpr RHITextureCreateFlags operator&(RHITextureCreateFlags lhs, RHITextureCreateFlags rhs) noexcept { return RHIEnumBitAnd(lhs, rhs); }
+constexpr RHITextureCreateFlags& operator|=(RHITextureCreateFlags& lhs, RHITextureCreateFlags rhs) noexcept { lhs = lhs | rhs; return lhs; }
 
 /// 资源内存访问方向。后端可据此选择显存、本地可映射内存或读回内存。
 enum class RHIMemoryUsage : u8 {
@@ -755,60 +667,60 @@ enum class RHICompareOp : u8 {
 
 /// GPU buffer 创建描述，不包含初始数据；初始数据通过 RHIUploadBatchDesc 提交。
 struct RHIBufferDesc {
-    std::string debugName;                                           ///< 调试名称，用于后端对象命名和 GPU 调试器显示。
-    u64 size = 0;                                                    ///< buffer 字节数。创建真实 GPU buffer 时必须大于 0。
-    RHIBufferUsage usage = RHIBufferUsage::None;                     ///< 声明 buffer 的用途位，后端据此设置 usage flags。
-    RHIBufferCreateFlags flags = RHIBufferCreateFlags::None;         ///< 创建附加标志，例如 transient、dedicated memory。
-    RHIMemoryUsage memoryUsage = RHIMemoryUsage::GpuOnly;            ///< 内存访问模式，决定资源放在显存、上传堆或读回堆。
-    RHIResourceLifetime lifetime = RHIResourceLifetime::Persistent;  ///< 生命周期提示，影响分配器复用策略。
-    bool persistentlyMapped = false;                                 ///< 是否希望 CPU 长期映射该 buffer，通常用于动态 uniform/staging 数据。
+    std::string debugName;                                                  ///< 调试名称，用于后端对象命名和 GPU 调试器显示。
+    u64 size = 0;                                                           ///< buffer 字节数。创建真实 GPU buffer 时必须大于 0。
+    RHIBufferUsage usage = RHIBufferUsage::None;                            ///< 声明 buffer 的用途位，后端据此设置 usage flags。
+    RHIBufferCreateFlags flags = RHIBufferCreateFlags::None;                ///< 创建附加标志，例如 transient、dedicated memory。
+    RHIMemoryUsage memoryUsage = RHIMemoryUsage::GpuOnly;                   ///< 内存访问模式，决定资源放在显存、上传堆或读回堆。
+    RHIResourceLifetime lifetime = RHIResourceLifetime::Persistent;         ///< 生命周期提示，影响分配器复用策略。
+    bool persistentlyMapped = false;                                        ///< 是否希望 CPU 长期映射该 buffer，通常用于动态 uniform/staging 数据。
 };
 
 /// GPU texture/image 创建描述，不包含 view 和 sampler。
 struct RHITextureDesc {
-    std::string debugName;                                           ///< 调试名称，用于后端对象命名。
-    RHITextureDimension dimension = RHITextureDimension::Texture2D;  ///< 资源维度。cube texture 本质上仍是 2D array。
-    RHIExtent3D extent{};                                            ///< texture 的像素尺寸。2D texture 的 depth 应为 1。
-    u32 arrayLayers = 1;                                             ///< 数组层数；cube 为 6，cube array 为 6 的倍数。
-    u32 mipLevels = 1;                                               ///< mip 层数；如果需要自动生成 mip，创建时仍要预留层数。
-    RHIFormat format = RHIFormat::RGBA8_UNorm;                       ///< 资源存储格式。
-    RHISampleCount samples = RHISampleCount::Count1;                 ///< MSAA 采样数；普通采样贴图一般为 Count1。
-    RHITextureUsage usage = RHITextureUsage::Sampled;                ///< texture 后续用途，影响后端 image usage/resource flags。
-    RHITextureCreateFlags flags = RHITextureCreateFlags::None;       ///< 创建附加标志，例如 cube compatible、mutable format。
-    RHIResourceLifetime lifetime = RHIResourceLifetime::Persistent;  ///< 生命周期提示，RenderGraph 临时图一般设为 Transient。
-    RHIResourceState initialState = RHIResourceState::Undefined;     ///< 创建后的逻辑初始状态，后端可据此插入首个 transition。
+    std::string debugName;                                                  ///< 调试名称，用于后端对象命名。
+    RHITextureDimension dimension = RHITextureDimension::Texture2D;         ///< 资源维度。cube texture 本质上仍是 2D array。
+    RHIExtent3D extent{};                                                   ///< texture 的像素尺寸。2D texture 的 depth 应为 1。
+    u32 arrayLayers = 1;                                                    ///< 数组层数；cube 为 6，cube array 为 6 的倍数。
+    u32 mipLevels = 1;                                                      ///< mip 层数；如果需要自动生成 mip，创建时仍要预留层数。
+    RHIFormat format = RHIFormat::RGBA8_UNorm;                              ///< 资源存储格式。
+    RHISampleCount samples = RHISampleCount::Count1;                        ///< MSAA 采样数；普通采样贴图一般为 Count1。
+    RHITextureUsage usage = RHITextureUsage::Sampled;                       ///< texture 后续用途，影响后端 image usage/resource flags。
+    RHITextureCreateFlags flags = RHITextureCreateFlags::None;              ///< 创建附加标志，例如 cube compatible、mutable format。
+    RHIResourceLifetime lifetime = RHIResourceLifetime::Persistent;         ///< 生命周期提示，RenderGraph 临时图一般设为 Transient。
+    RHIResourceState initialState = RHIResourceState::Undefined;            ///< 创建后的逻辑初始状态，后端可据此插入首个 transition。
 };
 
 /// texture view 创建描述，用于选择 texture 的一部分或重解释可兼容格式。
 struct RHITextureViewDesc {
-    std::string debugName;                                                ///< 调试名称。
-    RHITexture texture{};                                                 ///< 被查看的底层 texture。
-    RHITextureViewDimension dimension = RHITextureViewDimension::View2D;  ///< view 暴露给 shader/attachment 的维度。
-    RHIFormat format = RHIFormat::Undefined;                              ///< Undefined 表示沿用底层 texture 格式。
-    RHITextureAspect aspect = RHITextureAspect::Color;                    ///< view 覆盖的 aspect，depth/stencil view 需要显式设置。
-    u32 baseMipLevel = 0;                                                 ///< view 起始 mip。
-    u32 mipLevelCount = 1;                                                ///< view 覆盖 mip 数。
-    u32 baseArrayLayer = 0;                                               ///< view 起始数组层。
-    u32 arrayLayerCount = 1;                                              ///< view 覆盖数组层数。
+    std::string debugName;                                                  ///< 调试名称。
+    RHITexture texture{};                                                   ///< 被查看的底层 texture。
+    RHITextureViewDimension dimension = RHITextureViewDimension::View2D;    ///< view 暴露给 shader/attachment 的维度。
+    RHIFormat format = RHIFormat::Undefined;                                ///< Undefined 表示沿用底层 texture 格式。
+    RHITextureAspect aspect = RHITextureAspect::Color;                      ///< view 覆盖的 aspect，depth/stencil view 需要显式设置。
+    u32 baseMipLevel = 0;                                                   ///< view 起始 mip。
+    u32 mipLevelCount = 1;                                                  ///< view 覆盖 mip 数。
+    u32 baseArrayLayer = 0;                                                 ///< view 起始数组层。
+    u32 arrayLayerCount = 1;                                                ///< view 覆盖数组层数。
 };
 
 /// sampler 创建描述。sampler 只描述采样规则，不持有 texture。
 struct RHISamplerDesc {
-    std::string debugName;                                     ///< 调试名称。
-    RHIFilterMode minFilter = RHIFilterMode::Linear;           ///< 缩小时的过滤方式。
-    RHIFilterMode magFilter = RHIFilterMode::Linear;           ///< 放大时的过滤方式。
-    RHIMipmapMode mipmapMode = RHIMipmapMode::Linear;          ///< mip 层之间的过滤方式。
-    RHIAddressMode addressU = RHIAddressMode::Repeat;          ///< U 方向寻址。
-    RHIAddressMode addressV = RHIAddressMode::Repeat;          ///< V 方向寻址。
-    RHIAddressMode addressW = RHIAddressMode::Repeat;          ///< W 方向寻址，3D texture 时使用。
-    float mipLodBias = 0.0F;                                   ///< mip LOD 偏移。
-    float minLod = 0.0F;                                       ///< 可采样的最小 mip LOD。
-    float maxLod = std::numeric_limits<float>::max();          ///< 可采样的最大 mip LOD。
-    bool enableAnisotropy = false;                             ///< 是否启用各向异性过滤。
-    float maxAnisotropy = 1.0F;                                ///< 各向异性等级，启用时后端需要 clamp 到设备上限。
-    bool enableCompare = false;                                ///< 是否启用比较采样，常用于 shadow map。
-    RHICompareOp compareOp = RHICompareOp::LessOrEqual;        ///< 比较采样函数。
-    RHIBorderColor borderColor = RHIBorderColor::OpaqueBlack;  ///< ClampToBorder 时使用的边框颜色。
+    std::string debugName;                                                  ///< 调试名称。
+    RHIFilterMode minFilter = RHIFilterMode::Linear;                        ///< 缩小时的过滤方式。
+    RHIFilterMode magFilter = RHIFilterMode::Linear;                        ///< 放大时的过滤方式。
+    RHIMipmapMode mipmapMode = RHIMipmapMode::Linear;                       ///< mip 层之间的过滤方式。
+    RHIAddressMode addressU = RHIAddressMode::Repeat;                       ///< U 方向寻址。
+    RHIAddressMode addressV = RHIAddressMode::Repeat;                       ///< V 方向寻址。
+    RHIAddressMode addressW = RHIAddressMode::Repeat;                       ///< W 方向寻址，3D texture 时使用。
+    float mipLodBias = 0.0F;                                                ///< mip LOD 偏移。
+    float minLod = 0.0F;                                                    ///< 可采样的最小 mip LOD。
+    float maxLod = std::numeric_limits<float>::max();                       ///< 可采样的最大 mip LOD。
+    bool enableAnisotropy = false;                                          ///< 是否启用各向异性过滤。
+    float maxAnisotropy = 1.0F;                                             ///< 各向异性等级，启用时后端需要 clamp 到设备上限。
+    bool enableCompare = false;                                             ///< 是否启用比较采样，常用于 shadow map。
+    RHICompareOp compareOp = RHICompareOp::LessOrEqual;                     ///< 比较采样函数。
+    RHIBorderColor borderColor = RHIBorderColor::OpaqueBlack;               ///< ClampToBorder 时使用的边框颜色。
 };
 
 /// shader 阶段位掩码，用于描述 shader 自身阶段和资源可见性。
@@ -828,19 +740,9 @@ enum class RHIShaderStage : u32 {
 
 template <>
 struct RHIEnableEnumFlags<RHIShaderStage> : std::true_type {};
-
-[[nodiscard]] constexpr RHIShaderStage operator|(RHIShaderStage lhs, RHIShaderStage rhs) noexcept {
-    return RHIEnumBitOr(lhs, rhs);
-}
-
-[[nodiscard]] constexpr RHIShaderStage operator&(RHIShaderStage lhs, RHIShaderStage rhs) noexcept {
-    return RHIEnumBitAnd(lhs, rhs);
-}
-
-constexpr RHIShaderStage& operator|=(RHIShaderStage& lhs, RHIShaderStage rhs) noexcept {
-    lhs = lhs | rhs;
-    return lhs;
-}
+[[nodiscard]] constexpr RHIShaderStage operator|(RHIShaderStage lhs, RHIShaderStage rhs) noexcept { return RHIEnumBitOr(lhs, rhs); }
+[[nodiscard]] constexpr RHIShaderStage operator&(RHIShaderStage lhs, RHIShaderStage rhs) noexcept { return RHIEnumBitAnd(lhs, rhs); }
+constexpr RHIShaderStage& operator|=(RHIShaderStage& lhs, RHIShaderStage rhs) noexcept { lhs = lhs | rhs; return lhs; }
 
 /// shader 源码或字节码的语言/中间格式。
 enum class RHIShaderLanguage : u8 {
@@ -1158,19 +1060,9 @@ enum class RHIColorWriteMask : u8 {
 
 template <>
 struct RHIEnableEnumFlags<RHIColorWriteMask> : std::true_type {};
-
-[[nodiscard]] constexpr RHIColorWriteMask operator|(RHIColorWriteMask lhs, RHIColorWriteMask rhs) noexcept {
-    return RHIEnumBitOr(lhs, rhs);
-}
-
-[[nodiscard]] constexpr RHIColorWriteMask operator&(RHIColorWriteMask lhs, RHIColorWriteMask rhs) noexcept {
-    return RHIEnumBitAnd(lhs, rhs);
-}
-
-constexpr RHIColorWriteMask& operator|=(RHIColorWriteMask& lhs, RHIColorWriteMask rhs) noexcept {
-    lhs = lhs | rhs;
-    return lhs;
-}
+[[nodiscard]] constexpr RHIColorWriteMask operator|(RHIColorWriteMask lhs, RHIColorWriteMask rhs) noexcept { return RHIEnumBitOr(lhs, rhs); }
+[[nodiscard]] constexpr RHIColorWriteMask operator&(RHIColorWriteMask lhs, RHIColorWriteMask rhs) noexcept { return RHIEnumBitAnd(lhs, rhs); }
+constexpr RHIColorWriteMask& operator|=(RHIColorWriteMask& lhs, RHIColorWriteMask rhs) noexcept { lhs = lhs | rhs; return lhs; }
 
 /// 创建管线时不固定、录制命令时动态设置的状态。
 enum class RHIDynamicState : u8 {
@@ -1317,19 +1209,9 @@ enum class RHIPipelineStatisticFlags : u32 {
 
 template <>
 struct RHIEnableEnumFlags<RHIPipelineStatisticFlags> : std::true_type {};
-
-[[nodiscard]] constexpr RHIPipelineStatisticFlags operator|(RHIPipelineStatisticFlags lhs, RHIPipelineStatisticFlags rhs) noexcept {
-    return RHIEnumBitOr(lhs, rhs);
-}
-
-[[nodiscard]] constexpr RHIPipelineStatisticFlags operator&(RHIPipelineStatisticFlags lhs, RHIPipelineStatisticFlags rhs) noexcept {
-    return RHIEnumBitAnd(lhs, rhs);
-}
-
-constexpr RHIPipelineStatisticFlags& operator|=(RHIPipelineStatisticFlags& lhs, RHIPipelineStatisticFlags rhs) noexcept {
-    lhs = lhs | rhs;
-    return lhs;
-}
+[[nodiscard]] constexpr RHIPipelineStatisticFlags operator|(RHIPipelineStatisticFlags lhs, RHIPipelineStatisticFlags rhs) noexcept { return RHIEnumBitOr(lhs, rhs); }
+[[nodiscard]] constexpr RHIPipelineStatisticFlags operator&(RHIPipelineStatisticFlags lhs, RHIPipelineStatisticFlags rhs) noexcept { return RHIEnumBitAnd(lhs, rhs); }
+constexpr RHIPipelineStatisticFlags& operator|=(RHIPipelineStatisticFlags& lhs, RHIPipelineStatisticFlags rhs) noexcept { lhs = lhs | rhs; return lhs; }
 
 /// 查询池描述。timestamp 用于 GPU 时间，occlusion 用于遮挡查询。
 struct RHIQueryPoolDesc {
