@@ -1840,19 +1840,9 @@ enum class RHIRenderGraphResourceFlags : u32 {
 
 template <>
 struct RHIEnableEnumFlags<RHIRenderGraphResourceFlags> : std::true_type {};
-
-[[nodiscard]] constexpr RHIRenderGraphResourceFlags operator|(RHIRenderGraphResourceFlags lhs, RHIRenderGraphResourceFlags rhs) noexcept {
-    return RHIEnumBitOr(lhs, rhs);
-}
-
-[[nodiscard]] constexpr RHIRenderGraphResourceFlags operator&(RHIRenderGraphResourceFlags lhs, RHIRenderGraphResourceFlags rhs) noexcept {
-    return RHIEnumBitAnd(lhs, rhs);
-}
-
-constexpr RHIRenderGraphResourceFlags& operator|=(RHIRenderGraphResourceFlags& lhs, RHIRenderGraphResourceFlags rhs) noexcept {
-    lhs = lhs | rhs;
-    return lhs;
-}
+[[nodiscard]] constexpr RHIRenderGraphResourceFlags operator|(RHIRenderGraphResourceFlags lhs, RHIRenderGraphResourceFlags rhs) noexcept { return RHIEnumBitOr(lhs, rhs); }
+[[nodiscard]] constexpr RHIRenderGraphResourceFlags operator&(RHIRenderGraphResourceFlags lhs, RHIRenderGraphResourceFlags rhs) noexcept { return RHIEnumBitAnd(lhs, rhs); }
+constexpr RHIRenderGraphResourceFlags& operator|=(RHIRenderGraphResourceFlags& lhs, RHIRenderGraphResourceFlags rhs) noexcept { lhs = lhs | rhs; return lhs; }
 
 /// pass 对某个 graph 资源的读写引用。
 struct RHIRenderGraphResourceRef {
