@@ -4,9 +4,7 @@
 
 namespace RHI {
 
-RHIVulkan::RHIVulkan()
-    : impl_(std::make_unique<Impl>()) {
-}
+RHIVulkan::RHIVulkan() : impl_(std::make_unique<Impl>()) {}
 
 RHIVulkan::~RHIVulkan() {
     Shutdown();
