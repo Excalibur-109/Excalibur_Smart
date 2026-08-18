@@ -273,10 +273,8 @@ Mesh MakeSphere(
 
     for (rhi::u32 latitudeIndex = 0; latitudeIndex <= latitudeCount; ++latitudeIndex) {
         for (rhi::u32 longitudeIndex = 0; longitudeIndex <= longitudeCount; ++longitudeIndex) {
-            const float longitudeRatio =
-                static_cast<float>(longitudeIndex) / static_cast<float>(longitudeCount);
-            const float latitudeRatio =
-                static_cast<float>(latitudeIndex) / static_cast<float>(latitudeCount);
+            const float longitudeRatio = static_cast<float>(longitudeIndex) / static_cast<float>(longitudeCount);
+            const float latitudeRatio = static_cast<float>(latitudeIndex) / static_cast<float>(latitudeCount);
             const float longitudeAngle = longitudeRatio * 2.0F * PI;
             const float latitudeAngle = latitudeRatio * PI;
             const float sinLatitude = std::sin(latitudeAngle);
