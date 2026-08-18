@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UI 系统 | Excalibur RHI</title>
+  <link rel="stylesheet" href="rhi-learning.css">
+</head>
+<body>
+<header class="site-header"><div class="site-header-inner">
+  <a class="brand" href="index.html">Excalibur RHI 学习笔记</a>
+  <p class="subtitle">不修改 RHI 核心的即时模式 UI</p>
+  <nav aria-label="主导航">
+    <a href="index.html">总览</a><a href="rhi-definitions.html">资源与枚举</a><a href="device.html">Device</a><a href="render-graph.html">RenderGraph</a><a href="vulkan.html">Vulkan</a><a href="d3d11.html">D3D11</a><a href="d3d12.html">D3D12</a><a href="backend-comparison.html">后端对比</a><a href="pbr-demo.html">PBR Demo</a><a aria-current="page" href="ui-system.html">UI 系统</a><a href="official-references.html">官方资料</a>
+  </nav>
+</div></header>
+<main>
+  <p class="eyebrow">RHI/UI/RHIUI.hpp · RHI/UI/RHIUI.cpp</p>
+  <h1>UI 系统：把控件变成一个 RenderGraph pass</h1>
+  <p class="lead">UI 位于 RHI 之上，只使用 <code>RHIDevice</code>、<code>RHIFramePacket</code> 和 <code>RHIRenderGraph</code> 的公开接口。它不需要修改 Vulkan、D3D11 或 D3D12 的资源表与命令录制代码，因而可作为独立模块复用。</p>
+
+  <div class="callout"><p><span class="label ok">核心结论</span>UI 的遮挡由 painter order（<code>layer</code> 加提交顺序）决定，透明度由普通 source-alpha 混合决定，深度测试和深度写入都关闭。UI pass 使用 <code>Load</code> 读取已经画好的 PBR backbuffer，再用 <code>Store</code> 把合成结果交给 Present。</p></div>
+
+  <h2>1. 一帧的生命周期</h2>
+  <pre><code>Win32 WndProc 更新 InputState
+        ↓
+BeginFrame(extent, input)
+        ↓
+Panel / Text / Button / Image / SliderFloat（立即生成 CPU 顶点）
+        ↓
+AppendUploads(frame)       上传顶点和白色 1×1 纹理
+ImportResources(graph)     注册 imported buffer/texture
+AppendPassReads(uiPass)     声明 shader-read / vertex-input
+AppendDraws(uiWorkload)     layer 排序并生成 draw
+        ↓
+RenderGraph: ShadowMap → OpaquePBR → UI → Present</code></pre>
+  <p><code>BeginFrame</code> 会清空上一帧的顶点、draw 列表和外部图片名称。控件函数只做 CPU 侧记录，不立即访问 GPU；因此调用顺序简单、可读，也不会在同一帧创建大量短命原生对象。<code>activeSlider_</code> 是唯一跨帧状态，用于保证鼠标按住滑块拖动时，鼠标离开控件矩形仍能继续修改数值。</p>
+
+  <h2>2. 基本数据结构</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>类型</th><th>含义</th><th>实现细节</th></tr></thead>
+    <tbody>
+      <tr><td><code>Color</code></td><td>RGBA 归一化颜色和不透明度</td><td>作为顶点色；片元阶段与纹理采样值相乘。</td></tr>
+      <tr><td><code>Rect</code></td><td>客户区像素矩形</td><td>命中测试直接使用像素；提交四边形时除以 viewport 宽高。</td></tr>
+      <tr><td><code>InputState</code></td><td>鼠标位置及左键边沿</td><td><code>Pressed</code>/<code>Released</code> 是本帧事件，<code>Down</code> 是持续状态。</td></tr>
+      <tr><td><code>Context::Vertex</code></td><td>位置、UV、颜色</td><td>每个矩形 6 个顶点，固定写入一个可复用的顶点缓冲。</td></tr>
+      <tr><td><code>DrawItem</code></td><td>绑定集和顶点范围</td><td>保存 <code>layer</code>/<code>order</code>，最终稳定排序。</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>3. 图层、遮挡与透明度</h2>
+  <p>每次绘制都生成一个 <code>DrawItem</code>。提交时增加单调递增的 <code>order</code>；<code>AppendDraws</code> 按 <code>layer</code> 升序、再按 <code>order</code> 升序稳定排序。因此规则是：</p>
+  <ul>
+    <li>layer 较小的控件先绘制；layer 较大的控件后绘制并覆盖前者。</li>
+    <li>同一 layer 中，后调用的控件覆盖先调用的控件。</li>
+    <li>覆盖不是深度测试意义上的遮挡，而是颜色写入顺序；半透明控件仍会看到下面的颜色。</li>
+  </ul>
+  <p>管线的混合状态为 <code>srcAlpha, oneMinusSrcAlpha</code>。RGB 使用 <code>src.rgb * src.a + dst.rgb * (1-src.a)</code>，alpha 使用同样的覆盖关系。关闭深度测试是必要的：PBR 场景的深度值不能决定一个屏幕空间面板是否可见。</p>
+
+  <h2>4. 控件实现</h2>
+  <h3>Panel 与白色纹理</h3>
+  <p><code>Panel</code> 调用 <code>AddQuad</code>，绑定一张初始化为 <code>FF FF FF FF</code> 的 1×1 RGBA8 纹理。采样值恒为白色，所以矩形外观完全由顶点色决定。这样所有控件共用一个 fragment shader 和一个 pipeline，不需要单独的“纯色 PSO”。白纹理在第一次 <code>AppendUploads</code> 时上传，之后由 <code>staticUploadsPending_</code> 防止重复上传。</p>
+
+  <h3>Text 与 TextBox</h3>
+  <p>内置字体是 5×7 点阵：每个字符保存 7 个五位 bit mask；亮 bit 展开为一个小 quad，字符之间保留一列间距。它不依赖 Windows 字体或 GPU 字体 atlas，因此三个后端输出一致。当前字库覆盖英文大写、数字和少量符号，未知字符显示问号。<code>TextBox</code> 是 Panel 加 Text 的组合控件，当前是显示型文本框，不处理键盘输入、光标和选区。</p>
+
+  <h3>Image</h3>
+  <p><code>Image</code> 先画稍大的蓝色边框，再以 <code>layer + 1</code> 画实际纹理。外部纹理名称被记录到 <code>externalTextureNames_</code>，稍后作为 UI pass 的 shader-read 资源声明。<code>BindSetForImage</code> 用 (texture, view) 查找缓存；同一张材质贴图重复预览时不会创建新的原生 descriptor set 或 descriptor table。</p>
+
+  <h3>Button 与 SliderFloat</h3>
+  <p><code>Button</code> 根据 <code>Rect::Contains</code> 改变悬停颜色，在“命中 + leftButtonPressed”时返回一次性事件。<code>SliderFloat</code> 将鼠标 x 投影到 track 的 [0,1]，映射到 [minimum, maximum] 并用 <code>round(value / step) * step</code> 量化；它返回本帧 value 是否发生变化。</p>
+
+  <h2>5. RenderGraph 接入</h2>
+  <p>Context 创建的顶点缓冲和白纹理位于 RenderGraph 外部，故 <code>ImportResources</code> 将其标记为 <code>Imported</code> 并提供 <code>externalHandle</code>。RenderGraph 只负责本帧的状态和依赖，不负责这些对象的销毁。PBRDemo 对外部材质预览纹理也做同样的 import。</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>声明</th><th>资源状态</th><th>用途</th></tr></thead>
+    <tbody>
+      <tr><td><code>UI.Vertices</code></td><td><code>VertexBuffer / VertexInput</code></td><td>顶点输入阶段读取 UI 几何。</td></tr>
+      <tr><td><code>UI.White</code> 与图片</td><td><code>ShaderRead / FragmentShader</code></td><td>片元阶段采样白纹理或材质纹理。</td></tr>
+      <tr><td><code>BackBuffer</code></td><td><code>ColorAttachment</code></td><td>UI pass 使用 <code>Load</code>，保留 OpaquePBR 的颜色。</td></tr>
+      <tr><td><code>Depth</code></td><td><code>DepthStencilAttachment</code></td><td>使用 <code>Load</code> 保留深度，但 UI PSO 不测试也不写入它。</td></tr>
+    </tbody>
+  </table></div>
+  <p>这套做法把“图形资源状态”交给 RenderGraph，把“控件排序和顶点内容”留在 UI 自己内部，边界清晰：增加 Button 不需要改 <code>RHIVulkanFrame.inl</code>、<code>RHID3D11</code> 或 <code>RHID3D12</code>。</p>
+
+  <h2>6. Win32 输入与坐标</h2>
+  <p>PBRDemo 的 <code>WindowProcedure</code> 接收 <code>WM_MOUSEMOVE</code>、<code>WM_LBUTTONDOWN</code> 和 <code>WM_LBUTTONUP</code>，将 <code>LOWORD/HIWORD(lParam)</code> 转为客户区像素，写入 <code>uiInput_</code>。每次 BuildUI 完成后清除 Pressed/Released 边沿，下一帧只保留 Down。右键相机观察使用独立的鼠标捕获状态，不会把右键误传给 Button。</p>
+  <p>GLSL 与 HLSL 的 Y 公式相反：Vulkan shader 使用 <code>y * 2 - 1</code>，D3D 使用 <code>1 - y * 2</code>。两份 shader 都把 UI 的左上角像素映射到屏幕左上角，UI 控件代码不需要知道后端。</p>
+
+  <h2>7. 文件与限制</h2>
+  <div class="two-col">
+    <div><h3><code>RHI/UI/RHIUI.hpp</code></h3><p>公开数据结构和控件/RenderGraph 接口。</p></div>
+    <div><h3><code>RHI/UI/RHIUI.cpp</code></h3><p>点阵字体、资源创建、顶点上传、排序和销毁。</p></div>
+    <div><h3><code>RHI/UI/shaders/</code></h3><p>Vulkan GLSL 与 D3D 共享 HLSL 入口点。</p></div>
+  </div>
+  <ul>
+    <li>字体目前主要支持英文、数字和少量 ASCII 符号；中文需要接入 glyph atlas 或外部字体栅格化。</li>
+    <li><code>TextBox</code> 目前只是显示控件；完整编辑需要键盘消息、文本插入、光标和剪贴板。</li>
+    <li><code>Image</code> 面向 2D texture view，不处理 cubemap、视频帧或自动 mip 生成。</li>
+    <li>单帧顶点容量是 65536；复杂编辑器应改成分块 buffer 或动态增长策略。</li>
+  </ul>
+
+  <h2>继续阅读</h2>
+  <p><a href="pbr-demo.html">PBR Demo 文档</a> 说明 UI pass 的调用现场、材质贴图切换和相机输入；<a href="render-graph.html">RenderGraph</a> 说明 imported 资源和 load/store 的跨后端转换；<a href="backend-comparison.html">后端对比</a> 解释同一 UI PSO 在 Vulkan、D3D11、D3D12 中的落点。</p>
+</main>
+<footer class="footer"><div class="footer-inner">依据 RHI/UI/RHIUI.hpp、RHIUI.cpp 和 PBRDemo 当前实现整理。<a href="pbr-demo.html">切换到 PBR Demo</a> · <a href="index.html">返回索引</a></div></footer>
+</body></html>

@@ -41,6 +41,12 @@
 
 namespace {
 
+// 本文件是一个“从窗口到提交”的完整学习样例：
+//   Win32 HWND -> RHIDevice -> 纹理/缓冲/管线 -> RenderGraph pass -> Present。
+// PBRDemo 只调用 RHI 的公共描述符，后端差异集中在 shader 文件路径和窗口创建参数；
+// 这使同一份场景代码可以在 Vulkan、D3D11、D3D12 间切换，而无需在这里写原生命令。
+// UI 也以同样原则作为上层模块接入，UI pass 在 OpaquePBR 之后使用 Load 保留场景颜色。
+
 constexpr rhi::u32 WINDOW_WIDTH = 1280;     ///< 窗口模式下的默认客户区宽度。
 constexpr rhi::u32 WINDOW_HEIGHT = 800;     ///< 窗口模式下的默认客户区高度。
 constexpr rhi::u32 FRAMES_IN_FLIGHT = 2;    ///< CPU 可提前准备的最大帧数，也是二进制信号的轮转数量。
@@ -57,6 +63,8 @@ struct Vertex {
 
 /// 与 GLSL std140/HLSL cbuffer 对应的每物体常量数据，16 字节对齐后可跨后端上传。
 struct alignas(16) UniformBufferObject {
+    // 所有成员按 16 字节边界组织，保证 C++、GLSL std140 与 HLSL cbuffer 的偏移一致。
+    // 每帧只更新两个 UBO（球体和地面），天空盒复用球体的相机矩阵与环境贴图。
     // 主相机和物体变换。Shader 中按 projection * view * model * position 使用。
     float4x4 model{1.0F};       ///< 模型空间到世界空间。
     float4x4 view{1.0F};        ///< 世界空间到主相机观察空间。
@@ -319,6 +327,8 @@ public:
 
     /// 执行完整应用生命周期，并在主循环退出后释放全部 RHI 资源。
     void Run(HINSTANCE instance) {
+        // 创建顺序体现资源依赖：窗口先于 surface/device，device 先于静态资源，
+        // swapchain 先于依赖颜色格式的 pipeline/UI。Cleanup 使用相反顺序释放。
         CreateWindowHandle(instance);
         CreateDevice(instance);
         ConfigureRenderDocCapture();
@@ -431,6 +441,8 @@ private:
     std::chrono::steady_clock::time_point startTime_ = std::chrono::steady_clock::now();
 
     /// 将 Win32 消息转发给实例，并把 resize/close 转为主循环状态。
+    // Win32 回调只记录输入边沿和 resize 标志，不在消息线程直接调用 RHI。
+    // 这样所有 GPU 对象仍由主循环串行访问，避免窗口消息与提交线程交错。
     static LRESULT CALLBACK WindowProcedure(
         HWND window,
         UINT message,
@@ -510,6 +522,8 @@ private:
     }
 
     void BeginMouseLook() noexcept {
+        // 右键观察使用“锁定光标到客户区中心”的相对位移模式；释放时恢复用户
+        // 原来的屏幕位置，避免相机操作把光标留在窗口中央。
         if (mouseLookActive_ || window_ == nullptr) {
             return;
         }
@@ -684,6 +698,8 @@ private:
 
     /// 初始化所选 RHI 后端，并创建每帧 acquire/present 二进制信号。
     void CreateDevice(HINSTANCE instance) {
+        // 公共 RHIDeviceCreateDesc 只描述“需要什么”；Vulkan 额外提供 surface 创建回调，
+        // D3D 后端则直接从同一个 HWND 创建 DXGI swapchain，因此主循环不分后端。
         rhi::RHIDeviceCreateDesc desc{};
         desc.backend.applicationName = "RHI RenderGraph PBR Demo";
         desc.backend.preferredApi = options_.api;
@@ -763,6 +779,8 @@ private:
 
     /// 读取 metal_18 的五张贴图，创建可采样 GPU 纹理和共享 sampler。
     void CreateMaterialTextures() {
+        // stb_image 在 CPU 端统一解码为 RGBA8，随后 RHI upload 只处理一种像素布局。
+        // BaseColor 使用 sRGB 让采样自动回到线性空间；法线/金属度/粗糙度/高度保持 UNorm。
         const std::string materialDirectory =
             std::string(pbr_demo_config::ASSET_DIRECTORY) +
             "/metal_18-2K/";
@@ -807,6 +825,8 @@ private:
 
     /// 创建与窗口尺寸无关的几何、UBO、阴影、skybox、布局和绑定资源。
     void CreateStaticResources() {
+        // 这里创建与窗口尺寸无关的对象：网格、材质和天空盒纹理、UBO、bind set layout。
+        // swapchain 重建时这些对象无需重建，只有依赖颜色/深度格式的 pipeline 需要检查。
         const Mesh sphere = MakeSphere(32, 64);
         const Mesh plane = MakePlane();
         sphereVertexCount_ = static_cast<rhi::u32>(sphere.vertices.size());
@@ -1123,6 +1143,8 @@ private:
 
     /// 创建随窗口尺寸变化的 swapchain、主深度资源，并按需创建图形管线。
     void CreateSwapchainResources() {
+        // swapchain 是窗口尺寸的唯一源头。深度纹理和 pipeline attachment format 必须
+        // 与它同步；最小化时客户区为 0，暂缓创建以避免无效 extent。
         const rhi::RHIExtent2D extent = ClientExtent();
         if (extent.width == 0 || extent.height == 0) {
             return;
@@ -1160,6 +1182,8 @@ private:
 
     /// 根据当前后端选择 SPIR-V/HLSL，并创建 PBR、Shadow 和 Skybox 三条管线。
     void CreatePipeline() {
+        // 一个公共描述分别落成三套原生 PSO：Vulkan 使用预编译 SPIR-V，D3D 使用 HLSL
+        // 入口点。shadow 是 depth-only，skybox 使用 LessEqual 且关闭深度写入。
         rhi::RHIShaderDesc vertexShader{};
         vertexShader.debugName = "PBR.VertexShader";
         vertexShader.stage = rhi::RHIShaderStage::Vertex;
@@ -1304,6 +1328,8 @@ private:
 
     /// 等待旧呈现资源空闲后重建窗口尺寸相关资源；静态场景资源保持不变。
     void RecreateSwapchain() {
+        // 等 GPU 空闲后才能销毁旧 backbuffer/depth/view。UI 也依赖旧颜色格式，
+        // 所以先销毁 UI，再创建新 swapchain，最后用新格式重建 UI pipeline。
         const rhi::RHIExtent2D extent = ClientExtent();
         if (extent.width == 0 || extent.height == 0) {
             return;
@@ -1327,6 +1353,8 @@ private:
 
     /// Recreate the UI with the active swapchain format using only public RHI objects.
     void CreateUI() {
+        // Context 不持有 swapchain，只接收颜色/深度格式来创建兼容的 UI pipeline；
+        // 这正是“无需修改 RHI 核心也能加 UI”的边界。
         ui_ = std::make_unique<rhi::ui::Context>(
             *device_,
             swapchainFormat_,
@@ -1337,6 +1365,8 @@ private:
     /// Builds the demo overlay. The UI pass follows PBR, and layer values control overlap
     /// within the overlay itself.
     void BuildUI() {
+        // 每帧按稳定顺序提交控件：面板 -> 选择按钮 -> 贴图预览 -> 旋转滑块。
+        // layer 只解决 UI 内部遮挡，UI pass 本身由 RenderGraph 排在不透明场景之后。
         if (ui_ == nullptr) {
             return;
         }
@@ -1404,6 +1434,8 @@ private:
 
     /// 为球体或地面生成当前帧的相机、光源、阴影和材质常量。
     UniformBufferObject MakeUniform(bool sphere) const {
+        // sphere 参数决定 model 是否加入旋转；其余相机、光照、shadow 矩阵保持一致，
+        // 因而材质切换只需替换 bind set 中的纹理，不会改变网格或渲染图拓扑。
         const float time = std::chrono::duration<float>(
                                std::chrono::steady_clock::now() - startTime_)
                                .count();
@@ -1500,6 +1532,8 @@ private:
     }
 
     /// 将资源上传、RenderGraph、draw workload、队列同步和 present 组装为一帧 packet。
+    // 构造 RenderGraph 的声明部分和对应 workload。声明先于命令提交，使图编译器
+    // 能从 reads/attachments 推导 pass 顺序与跨 API 的资源状态转换。
     rhi::RHIFramePacket BuildFrame(rhi::u32 imageIndex) {
         rhi::RHIFramePacket packet{};
         packet.settings.drawableSize = swapchainExtent_;
@@ -1844,6 +1878,8 @@ private:
 
     /// 获取一张 swapchain image，提交 RenderGraph 帧，并推进同步槽位和累计帧号。
     void DrawFrame() {
+        // 一帧的 CPU 顺序是 acquire -> BuildFrame/上传 -> SubmitFrame -> present。
+        // acquire 失败通常意味着窗口尺寸变化，交给下一轮 RecreateSwapchain 处理。
         if (!swapchain_) {
             return;
         }
@@ -1905,6 +1941,8 @@ private:
 
     /// 处理 Win32 消息、最小化等待、swapchain 重建和逐帧渲染。
     void MainLoop() {
+        // PeekMessage 保证渲染不会被 GetMessage 阻塞；最小化时 Sleep，避免 0x0 swapchain
+        // 忙等。WM_SIZE/鼠标消息只更新状态，真正的 GPU 工作统一在 DrawFrame 完成。
         MSG message{};
         while (running_) {
             while (PeekMessage(&message, nullptr, 0, 0, PM_REMOVE)) {
@@ -1935,6 +1973,8 @@ private:
 
     /// 等待 GPU 空闲，并按“使用者先于被引用资源”的逆依赖顺序销毁对象。
     void Cleanup() noexcept {
+        // WaitIdle 后按“使用者先于被引用者”的逆序销毁，确保 descriptor、pipeline、
+        // view 在底层 texture/buffer 之前释放，并让 UI 在 device 仍有效时 Shutdown。
         if (device_ == nullptr) {
             return;
         }

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PBR Demo | Excalibur RHI</title>
+  <link rel="stylesheet" href="rhi-learning.css">
+</head>
+<body>
+<header class="site-header"><div class="site-header-inner">
+  <a class="brand" href="index.html">Excalibur RHI 学习笔记</a>
+  <p class="subtitle">Win32 HWND、材质纹理、阴影、天空盒与 UI 的完整示例</p>
+  <nav aria-label="主导航">
+    <a href="index.html">总览</a><a href="rhi-definitions.html">资源与枚举</a><a href="device.html">Device</a><a href="render-graph.html">RenderGraph</a><a href="vulkan.html">Vulkan</a><a href="d3d11.html">D3D11</a><a href="d3d12.html">D3D12</a><a href="backend-comparison.html">后端对比</a><a aria-current="page" href="pbr-demo.html">PBR Demo</a><a href="ui-system.html">UI 系统</a><a href="official-references.html">官方资料</a>
+  </nav>
+</div></header>
+<main>
+  <p class="eyebrow">RHI/PBRDemo/main.cpp · RHI/PBRDemo/CMakeLists.txt</p>
+  <h1>PBR Demo：一条可切换三后端的渲染流水线</h1>
+  <p class="lead">这个示例用一个 Win32 <code>HWND</code> 创建窗口，把 stb_image 解码的金属材质和天空盒上传到 RHI，再通过 RenderGraph 依次完成阴影、PBR、UI 和 Present。源码命名空间保持小写 <code>rhi</code>，便于和公共 RHI API 一致。</p>
+
+  <div class="callout"><p><span class="label ok">已验证</span>Debug 构建可生成 PBRDemo，并已在 Vulkan、D3D11、D3D12 下运行退出码为 0。UI 贴图切换和旋转速度滑块在截图中可见。Vulkan 环境若出现第三方 Epic Overlay layer JSON 警告，属于外部 layer 配置，不是本 Demo 的 RenderGraph 错误。</p></div>
+
+  <h2>1. 初始化顺序</h2>
+  <pre><code>WinMain / ParseOptions
+  └─ PBRDemoApp::Run
+       ├─ CreateWindowHandle       注册 WNDCLASSEXW，创建 HWND
+       ├─ CreateDevice              选择 Vulkan / D3D11 / D3D12
+       ├─ CreateStaticResources     网格、纹理、UBO、bind set、pipeline layout
+       ├─ CreateSwapchainResources  swapchain、depth、依赖格式的 pipeline
+       ├─ CreateUI                  创建 UI pipeline/context
+       ├─ MainLoop                  acquire → BuildFrame → submit → present
+       └─ Cleanup                   WaitIdle 后逆序销毁</code></pre>
+  <p><code>Run</code> 的顺序是资源依赖的可执行文档。窗口先存在，Vulkan 才能由回调创建 <code>VkSurfaceKHR</code>；swapchain 格式确定后才能创建颜色 attachment 兼容的 PBR/UI pipeline。窗口最小化时客户区为 0，程序暂缓创建和提交，避免把无效 extent 传给后端。</p>
+
+  <h2>2. HWND 与三套 API</h2>
+  <p><code>CreateWindowHandle</code> 使用 <code>AdjustWindowRect</code> 保证客户区默认是 1280×800。<code>WindowProcedure</code> 只更新 resize、鼠标和关闭标志；GPU 操作仍在主循环中串行执行。设备描述中的 <code>nativeWindow</code> 指向同一个 HWND：</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>后端</th><th>窗口连接</th><th>shader 输入</th><th>呈现对象</th></tr></thead>
+    <tbody>
+      <tr><td>Vulkan</td><td>Win32 surface 扩展和 <code>vkCreateWin32SurfaceKHR</code> 回调</td><td>预编译 <code>.spv</code></td><td><code>VkSwapchainKHR</code></td></tr>
+      <tr><td>D3D11</td><td>DXGI swapchain 绑定 HWND</td><td>运行时 D3DCompile HLSL <code>vs_5_0/ps_5_0</code></td><td>DXGI backbuffer</td></tr>
+      <tr><td>D3D12</td><td>DXGI swapchain 绑定 HWND</td><td>运行时 D3DCompile HLSL <code>vs_5_1/ps_5_1</code></td><td>DXGI backbuffer + command queue</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>3. 场景资源</h2>
+  <h3>网格和顶点布局</h3>
+  <p><code>MakeSphere(32, 64)</code> 通过经纬线生成 UV sphere；每个顶点包含 position、normal、uv 和 tangent。<code>MakePlane</code> 生成 XZ 平面的地面。两个网格合并进一个 vertex/index buffer，通过 vertex offset 和 index offset 选择绘制范围。tangent.w 保存 handedness，PBR fragment shader 据此构建法线贴图的 TBN 基。</p>
+
+  <h3>stb_image 与材质</h3>
+  <p><code>LoadImageRGBA8</code> 强制 <code>STBI_rgb_alpha</code>，把 PNG/JPG 解码为连续 RGBA8 CPU 数组，并检查尺寸、乘法溢出和加载失败原因。<code>MaterialTextureSlot</code> 有五个槽：</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>槽位</th><th>文件示例</th><th>格式</th><th>shader 用途</th></tr></thead>
+    <tbody>
+      <tr><td>BaseColor</td><td><code>metal_18_basecolor-2K.png</code></td><td><code>RGBA8_SRGB</code></td><td>反照率；采样时转线性空间。</td></tr>
+      <tr><td>Normal</td><td><code>metal_18_normal-2K.png</code></td><td><code>RGBA8_UNorm</code></td><td>TBN 中的切线空间法线。</td></tr>
+      <tr><td>Metallic</td><td><code>metal_18_metallic-2K.png</code></td><td><code>RGBA8_UNorm</code></td><td>金属度，影响 F0 与漫反射。</td></tr>
+      <tr><td>Roughness</td><td><code>metal_18_roughness-2K.png</code></td><td><code>RGBA8_UNorm</code></td><td>微表面粗糙度，控制高光宽度。</td></tr>
+      <tr><td>Height</td><td><code>metal_18_height-2K.png</code></td><td><code>RGBA8_UNorm</code></td><td>视差/高度偏移参数。</td></tr>
+    </tbody>
+  </table></div>
+  <p>五张图使用同一个 repeat + linear sampler。每张 texture 另建一个 2D view；图形绑定集把 view、texture 和 sampler 作为 combined texture/sampler 提供给 fragment shader。材质贴图在每帧上传列表中只保留首次上传需要的 CPU 数据，之后 GPU 资源可复用。</p>
+
+  <h3>天空盒</h3>
+  <p>sky 目录的 <code>px/nx/py/ny/pz/nz</code> 按 cubemap layer 顺序读取，检查六面都是相同正方形尺寸，然后创建 6-layer、<code>CubeCompatible</code> 的 RGBA8 sRGB texture 和 Cube view。天空盒 vertex shader 使用球体 position 作为方向，移除相机平移；fragment shader 用相机方向采样 cubemap。其 uniform binding 0 同时对 Vertex 和 Fragment 可见，因为像素阶段还读取 <code>materialParameters.w</code> 的天空旋转角。</p>
+
+  <h2>4. UniformBufferObject 与相机</h2>
+  <p><code>UniformBufferObject</code> 用 <code>alignas(16)</code> 对齐，与 GLSL std140/HLSL cbuffer 对应：</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>字段</th><th>内容</th><th>使用阶段</th></tr></thead>
+    <tbody>
+      <tr><td><code>model</code></td><td>模型到世界矩阵</td><td>顶点变换；球体带时间旋转。</td></tr>
+      <tr><td><code>view</code> / <code>projection</code></td><td>相机观察和透视投影</td><td>主 PBR、skybox。</td></tr>
+      <tr><td><code>lightDirection</code> / <code>lightColor</code></td><td>方向光和颜色</td><td>直接光照、shadow。</td></tr>
+      <tr><td><code>cameraPosition</code></td><td>世界空间相机位置</td><td>视线方向、反射向量。</td></tr>
+      <tr><td><code>baseColor</code></td><td>baseColor.rgb 与 metallic.a</td><td>材质常量乘贴图。</td></tr>
+      <tr><td><code>materialParameters</code></td><td>roughness、AO、height、skybox Y 旋转</td><td>PBR/天空盒参数。</td></tr>
+      <tr><td><code>lightViewProjection</code> / <code>shadowParameters</code></td><td>shadow map 坐标和 bias/texel size</td><td>shadow depth compare + PCF。</td></tr>
+    </tbody>
+  </table></div>
+  <p>Math 的矩阵是行主序，而 shader 接收 column-major 约定，因此 <code>ToShaderMatrix</code> 在上传前转置。Vulkan 和 D3D 的 viewport Y 方向不同：只对 Vulkan 的 projection[1][1] 翻转，避免两套后端同时翻转导致画面上下颠倒。</p>
+  <p>按住右键进入 mouse-look：窗口捕获光标，把相对移动转换为 yaw/pitch，并把 pitch 限制在约 ±1.5 弧度；释放右键恢复原来的屏幕光标位置。球体旋转使用单调时钟，<code>sphereRotationDegreesPerSecond_</code> 由 UI slider 修改，最终在 <code>MakeUniform(true)</code> 中影响 model 矩阵。</p>
+
+  <h2>5. RenderGraph 的四个 pass</h2>
+  <pre><code>ShadowMap  (depth clear/store)
+      ↓ ShadowDepth: DepthWrite → ShaderRead
+OpaquePBR  (backbuffer/depth clear/store)
+      ↓ BackBuffer: ColorAttachment
+UI         (backbuffer/depth load/store)
+      ↓ BackBuffer: ColorAttachment → Present
+Present</code></pre>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Pass</th><th>读取</th><th>写入/attachment</th><th>关键原因</th></tr></thead>
+    <tbody>
+      <tr><td>ShadowMap</td><td>Vertices、Indices、SphereUniform</td><td><code>ShadowDepth</code>，Clear + Store</td><td>从光源视角写入 D32 深度；后续 PBR 必须采样，所以不能 Discard。</td></tr>
+      <tr><td>OpaquePBR</td><td>网格、UBO、ShadowDepth、Skybox、五张材质图</td><td>BackBuffer 和 Depth，Clear + Store</td><td>完成天空盒、地面、球体和直接光照/阴影。</td></tr>
+      <tr><td>UI</td><td>UI.Vertices、UI.White、选中的外部材质图</td><td>BackBuffer 和 Depth，Load + Store</td><td>Load 保留 PBR 颜色；PSO 禁用深度测试/写入，仅做 alpha 合成。</td></tr>
+      <tr><td>Present</td><td>BackBuffer，Present 状态</td><td>交换链呈现</td><td>把颜色 attachment 状态转换到后端 present 所需状态。</td></tr>
+    </tbody>
+  </table></div>
+  <p><code>BuildFrame</code> 先把长期存活的 RHI 句柄以 imported resource 放入图，再添加 pass 描述和 workload。提交列表明确写成 <code>ShadowMap</code>、<code>OpaquePBR</code>、<code>UI</code>、<code>Present</code>，让图编译器验证依赖并插入后端所需 barrier；D3D11 虽没有显式 barrier，也需要按相同顺序解绑 DSV、绑定 SRV。</p>
+
+  <h2>6. shader 与 CMake</h2>
+  <p><code>RHI/PBRDemo/CMakeLists.txt</code> 调用 <code>glslangValidator -V</code> 把 GLSL 编译成 <code>pbr.vert.spv</code>、<code>pbr.frag.spv</code>、skybox 和 shadow SPIR-V；UI 的 GLSL 也在这里编译。D3D11/12 运行时从复制到 build 目录的 HLSL 文件编译指定入口点。这样源代码只维护一份 HLSL，而 Vulkan 仍满足 shader module 必须使用合法 SPIR-V 字节码的要求。</p>
+  <p>shader 绑定约定在三后端保持一致：UBO 位于 b0/set binding 0，纹理和 sampler 使用固定寄存器/绑定号，顶点语义是 <code>POSITION/NORMAL/TEXCOORD/TANGENT</code>。Skybox 的 uniform binding 0 必须同时声明 Vertex + Fragment 可见，否则 D3D12 root signature/PSO 会拒绝像素 shader 读取该 cbuffer。</p>
+
+  <h2>7. UI 交互与运行</h2>
+  <p>左侧面板提供五个按钮：Base Color、Normal、Metallic、Roughness、Height。按钮只改变 <code>selectedMaterialTexture_</code>，右侧 <code>Image</code> 预览对应的 RHI texture/view；PBR 绑定仍使用同一套五纹理，故切换不会重建 pipeline。滑块把球体速度从 0 到 180 DEG/S 量化为 1 度，下一帧的 model 矩阵立即反映新值。</p>
+  <pre><code>cmake --build build/PBRDemo --config Debug --target PBRDemo --parallel 4
+build\PBRDemo\Debug\PBRDemo.exe --api=vulkan
+build\PBRDemo\Debug\PBRDemo.exe --api=d3d11
+build\PBRDemo\Debug\PBRDemo.exe --api=d3d12</code></pre>
+  <p>截图验证文件位于 <code>build/PBRDemo/pbr-ui-vulkan.png</code>、<code>pbr-ui-d3d11.png</code>、<code>pbr-ui-d3d12.png</code> 和 <code>pbr-ui-normal-slider.png</code>。最后一张包含 Normal 贴图切换以及约 138 DEG/S 的旋转速度显示。</p>
+
+  <h2>继续阅读</h2>
+  <p><a href="ui-system.html">UI 系统文档</a> 深入解释控件、layer、输入和 imported resource；<a href="render-graph.html">RenderGraph</a> 解释本页四个 pass 的编译过程；<a href="vulkan.html">Vulkan</a>、<a href="d3d11.html">D3D11</a>、<a href="d3d12.html">D3D12</a> 可对照每个描述符在原生 API 中的对象。</p>
+</main>
+<footer class="footer"><div class="footer-inner">依据 RHI/PBRDemo/main.cpp 当前实现整理。<a href="ui-system.html">切换到 UI 系统</a> · <a href="index.html">返回索引</a></div></footer>
+</body></html>

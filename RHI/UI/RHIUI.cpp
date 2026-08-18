@@ -12,8 +12,13 @@
 namespace RHI::UI {
 namespace {
 
+// 这是单帧 UI 的硬上限。每个矩形由两个三角形（6 个顶点）组成，
+// 预先固定容量可以避免录制过程中不断重新分配 GPU buffer；超出时直接报错，
+// 让调用者知道需要拆分界面或提高容量，而不是静默丢失控件。
 constexpr u32 MAX_UI_VERTICES = 65536;
 
+// 点阵字体只保存每行 5 个像素的 bit mask。它不依赖操作系统字体栅格化，
+// 因而 Vulkan、D3D11、D3D12 的截图都能得到一致的布局；未收录字符显示为 '?'。
 struct Glyph {
     char character;
     std::array<u8, 7> rows;
@@ -74,29 +79,30 @@ constexpr std::array GLYPHS{
 }
 
 [[nodiscard]] float TextWidth(std::string_view value, float pixelHeight) noexcept {
+    // 5 列字形加 1 列字间距，7 行高度按 pixelHeight 缩放。
     return static_cast<float>(value.size()) * pixelHeight * (6.0F / 7.0F);
 }
 
 } // namespace
 
 struct Context::Vertex {
-    float2 position{};
-    float2 uv{};
-    float4 color{};
+    float2 position{}; // 归一化客户区坐标；shader 再转换到 NDC。
+    float2 uv{};       // 白纹理固定为全覆盖，图片则使用完整 [0,1] 区间。
+    float4 color{};    // 顶点色与采样颜色相乘，再交给 alpha blending。
 };
 
 struct Context::DrawItem {
-    RHIBindSet bindSet{};
-    i32 layer = 0;
-    u32 order = 0;
-    u32 firstVertex = 0;
+    RHIBindSet bindSet{}; // 每张图片的纹理+sampler 绑定；纯色控件使用 whiteBindSet_。
+    i32 layer = 0;        // 数值越大越晚绘制，覆盖前面的像素。
+    u32 order = 0;        // 同层保持提交顺序，保证即时模式的确定性。
+    u32 firstVertex = 0;  // 在本帧线性顶点缓冲中的起始位置。
     u32 vertexCount = 0;
 };
 
 struct Context::ImageBinding {
-    RHITexture texture{};
+    RHITexture texture{};     // 用于缓存键，防止同一纹理重复创建 bind set。
     RHITextureView view{};
-    RHIBindSet bindSet{};
+    RHIBindSet bindSet{};     // 与 UI layout 兼容的 combined texture/sampler。
 };
 
 Context::Context(
@@ -108,6 +114,8 @@ Context::Context(
       colorFormat_(colorFormat),
       depthFormat_(depthFormat),
       shaderDirectory_(std::move(shaderDirectory)) {
+    // 下面只创建一次、可跨帧复用的 GPU 对象。每帧变化的矩形和文字只上传顶点，
+    // 这样 UI 不需要修改 RHI 核心的资源生命周期或命令录制实现。
     RHIBufferDesc vertexBufferDesc{};
     vertexBufferDesc.debugName = "UI.Vertices";
     vertexBufferDesc.size = sizeof(Vertex) * MAX_UI_VERTICES;
@@ -204,6 +212,8 @@ Context::Context(
     pipelineDesc.vertexBuffers.push_back(vertexLayout);
     pipelineDesc.inputAssembly.topology = RHIPrimitiveTopology::TriangleList;
     pipelineDesc.raster.cullMode = RHICullMode::None;
+    // UI 已经通过 painter order 决定遮挡关系；关闭深度测试/写入，避免场景深度
+    // 让面板在球体后面消失，同时允许 UI pass 在 PBR pass 之后直接叠加。
     pipelineDesc.depthStencil.depthTestEnable = false;
     pipelineDesc.depthStencil.depthWriteEnable = false;
     pipelineDesc.blend.attachments.push_back({
@@ -229,6 +239,8 @@ Context::~Context() {
 }
 
 void Context::BeginFrame(RHIExtent2D extent, InputState input) {
+    // 控件函数是即时提交 API：它们只在当前调用期间生成 CPU 几何，下一帧重新提交。
+    // activeSlider_ 例外地跨帧保留，用于在鼠标按住时把拖动状态传递给同一个控件。
     extent_ = extent;
     input_ = input;
     if (!input_.leftButtonDown) {
@@ -256,6 +268,7 @@ void Context::AddQuad(Rect rect, Color color, RHIBindSet bindSet, i32 layer) {
         throw std::runtime_error("UI vertex capacity exceeded");
     }
 
+    // 将像素矩形延迟到 shader 前转换为归一化坐标，避免 UI 控件和 RHI 绑定窗口尺寸。
     const float left = rect.x / static_cast<float>(extent_.width);
     const float top = rect.y / static_cast<float>(extent_.height);
     const float right = (rect.x + rect.width) / static_cast<float>(extent_.width);
@@ -286,6 +299,8 @@ void Context::AddTextVertices(
     if (pixelHeight <= 0.0F || extent_.width == 0 || extent_.height == 0) {
         return;
     }
+    // 每个点阵像素都是一个独立 quad。文字量较大时会较快消耗 MAX_UI_VERTICES，
+    // 这是有意的简单实现：它不引入字体 atlas、descriptor array 或额外后端代码。
     const float pixelScale = pixelHeight / 7.0F;
     const float originalX = x;
     const u32 firstVertex = static_cast<u32>(vertices_.size());
@@ -341,6 +356,8 @@ RHIBindSet Context::BindSetForImage(RHITexture texture, RHITextureView view) {
     if (texture == whiteTexture_ && view == whiteView_) {
         return whiteBindSet_;
     }
+    // BindSet 按 (texture, view) 缓存。UI 一帧可能重复显示同一张材质图，缓存可以
+    // 避免每次 Image() 都创建原生 descriptor set/descriptor table。
     for (const ImageBinding& binding : imageBindings_) {
         if (binding.texture == texture && binding.view == view) {
             return binding.bindSet;
@@ -375,6 +392,7 @@ void Context::Image(
             externalTextureNames_.end()) {
         externalTextureNames_.emplace_back(graphResourceName);
     }
+    // 先画一圈蓝色边框，再以 layer+1 画图片，明确图片覆盖边框内部而不覆盖外框。
     Panel({rect.x - 2.0F, rect.y - 2.0F, rect.width + 4.0F, rect.height + 4.0F},
           {0.23F, 0.55F, 0.72F, 0.88F}, layer);
     AddQuad(rect, {1.0F, 1.0F, 1.0F, 1.0F}, BindSetForImage(texture, view), layer + 1);
@@ -439,6 +457,8 @@ bool Context::SliderFloat(
 }
 
 void Context::AppendUploads(RHIFramePacket& frame) {
+    // 白纹理只在第一次出现时上传；顶点则每帧覆盖同一个 buffer 的开头区域。
+    // RHIFramePacket 持有 std::vector<std::byte>，因此直到提交完成前 CPU 数据仍有效。
     if (staticUploadsPending_) {
         frame.uploads.textures.push_back({
             whiteTexture_,
@@ -459,6 +479,8 @@ void Context::AppendUploads(RHIFramePacket& frame) {
 }
 
 void Context::ImportResources(RHIRenderGraphDesc& graph) const {
+    // UI buffer/纹理是在 RenderGraph 外创建的，所以必须标记 Imported；图仍能据此
+    // 生成状态转换，但不会尝试替 UI 销毁或重新分配这些对象。
     RHIRenderGraphBufferDesc vertices{};
     vertices.name = "UI.Vertices";
     vertices.imported = true;
@@ -480,6 +502,8 @@ void Context::ImportResources(RHIRenderGraphDesc& graph) const {
 }
 
 void Context::AppendPassReads(RHIRenderGraphPassDesc& pass) const {
+    // UI pass 只读顶点和纹理，颜色 attachment 的写入由 PBRDemo 创建 pass 时声明。
+    // FragmentShader/VertexInput 阶段信息让 Vulkan barrier 与 D3D12 transition 有依据。
     pass.reads.push_back({
         "UI.Vertices",
         RHIRenderGraphResourceType::Buffer,
@@ -500,6 +524,8 @@ void Context::AppendPassReads(RHIRenderGraphPassDesc& pass) const {
 }
 
 void Context::AppendDraws(RHIRenderPassWorkload& workload) {
+    // 稳定排序保证“layer 小的先画；同层后提交的后画”。这是 UI 的遮挡规则，
+    // 与深度缓冲无关，因此也适用于透明图片和半透明面板。
     std::stable_sort(draws_.begin(), draws_.end(), [](const DrawItem& lhs, const DrawItem& rhs) {
         if (lhs.layer != rhs.layer) {
             return lhs.layer < rhs.layer;
@@ -518,6 +544,8 @@ void Context::AppendDraws(RHIRenderPassWorkload& workload) {
 }
 
 void Context::Shutdown() noexcept {
+    // Context 的资源必须在 RHIDevice 仍然存活时释放。调用方通常先 WaitIdle，
+    // 这里再按 bind set -> pipeline/layout -> view/texture -> buffer 的依赖逆序销毁。
     if (device_ == nullptr) {
         return;
     }

@@ -7,6 +7,10 @@ cmake_minimum_required(VERSION 3.20)
 # -----------------------------------------------------------------------------
 project(PBRDemo LANGUAGES CXX)
 
+# 这个目标是独立可运行的学习样例：它把 RHI 后端源码编译进 PBRDemoRHI，
+# 再把 UI 源文件作为上层模块加入 PBRDemo。这样可以单独构建 Demo，且不需要
+# 改动仓库根目录的 RHI 工程目标。
+
 if(NOT WIN32)
     message(FATAL_ERROR "PBRDemo currently requires Win32 HWND presentation.")
 endif()
@@ -98,6 +102,8 @@ target_include_directories(PBRDemo PRIVATE
 
 # shader 编译：.vert / .frag → .spv
 function(rhi_compile_shader SRC_FILE)
+    # Vulkan 运行时读取 SPIR-V；D3D11/12 则在 RHIDevice 内通过 D3DCompile 编译 HLSL。
+    # 因此这里只处理 GLSL，HLSL 通过 configure_file 复制到与 exe 相邻的 shaders 目录。
     get_filename_component(SRC_NAME ${SRC_FILE} NAME)
     set(OUT_FILE ${PBR_SHADER_OUT_DIR}/${SRC_NAME}.spv)
     add_custom_command(
