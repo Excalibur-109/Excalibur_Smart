@@ -12,6 +12,7 @@
 #include "Math.hpp"
 #include "PBRDemoConfig.hpp"
 #include "RHI.hpp"
+#include "RHI/RenderPipelineDemo/ForwardRenderPipeline.hpp"
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_FAILURE_USERMSG
@@ -40,6 +41,20 @@
 #include <vector>
 
 namespace {
+
+// 同一套场景引导代码可编译为 PBRDemo 或 RenderPipelineDemo；后者唯一改变
+// 是可执行文件/窗口的身份，渲染路径仍通过下面的通用 ForwardRenderPipeline。
+#if defined(RHI_RENDER_PIPELINE_DEMO)
+constexpr const wchar_t* DEMO_WINDOW_TITLE = L"RHI Generic Forward Pipeline Demo - ";
+constexpr const char* DEMO_APPLICATION_NAME = "RHI Generic Forward Pipeline Demo";
+constexpr const char* DEMO_CAPTURE_TITLE = "RenderPipelineDemo textured material frame";
+constexpr const char* DEMO_ERROR_TITLE = "RHI Render Pipeline Demo";
+#else
+constexpr const wchar_t* DEMO_WINDOW_TITLE = L"RHI RenderGraph PBR Demo - ";
+constexpr const char* DEMO_APPLICATION_NAME = "RHI RenderGraph PBR Demo";
+constexpr const char* DEMO_CAPTURE_TITLE = "PBRDemo textured material frame";
+constexpr const char* DEMO_ERROR_TITLE = "RHI PBR Demo";
+#endif
 
 // 本文件是一个“从窗口到提交”的完整学习样例：
 //   Win32 HWND -> RHIDevice -> 纹理/缓冲/管线 -> RenderGraph pass -> Present。
@@ -660,7 +675,7 @@ private:
         // 窗口标题由固定 Demo 名称和当前 RHI 后端名称拼接而成。
         const std::wstring windowTitle =
             // 先构造 std::wstring，确保后续加法执行宽字符串拼接而不是指针运算。
-            std::wstring(L"RHI RenderGraph PBR Demo - ") +
+            std::wstring(DEMO_WINDOW_TITLE) +
             // 追加 Vulkan 或 D3D 等当前图形 API 的可读名称。
             ApiDisplayName(options_.api);
         // 使用已注册的 Unicode 窗口类创建顶层窗口，并保存返回的原生 HWND。
@@ -701,7 +716,7 @@ private:
         // 公共 RHIDeviceCreateDesc 只描述“需要什么”；Vulkan 额外提供 surface 创建回调，
         // D3D 后端则直接从同一个 HWND 创建 DXGI swapchain，因此主循环不分后端。
         rhi::RHIDeviceCreateDesc desc{};
-        desc.backend.applicationName = "RHI RenderGraph PBR Demo";
+        desc.backend.applicationName = DEMO_APPLICATION_NAME;
         desc.backend.preferredApi = options_.api;
         desc.backend.validation = rhi::RHIValidationMode::Enabled;
         desc.backend.framesInFlight = FRAMES_IN_FLIGHT;
@@ -1536,6 +1551,9 @@ private:
     // 能从 reads/attachments 推导 pass 顺序与跨 API 的资源状态转换。
     rhi::RHIFramePacket BuildFrame(rhi::u32 imageIndex) {
         rhi::RHIFramePacket packet{};
+        // ForwardRenderPipeline 不拥有任何资源；它只接收下面声明的 pass/workload，
+        // 在提交前统一写入 packet，固定前向渲染阶段的可读顺序。
+        rhi::pipeline::ForwardRenderPipeline forwardPipeline{};
         packet.settings.drawableSize = swapchainExtent_;
         packet.settings.viewport = {
             0.0F,
@@ -1698,7 +1716,9 @@ private:
         shadowAttachment.storeOp = rhi::RHIStoreOp::Store;
         shadowAttachment.clearValue.depthStencil = {1.0F, 0};
         shadowPass.depthStencilAttachment = shadowAttachment;
-        packet.graph.passes.push_back(shadowPass);
+        forwardPipeline.SetPass(
+            rhi::pipeline::ForwardStage::Shadow,
+            std::move(shadowPass));
 
         // -----------------------------------------------------------------
         // Pass 2：主相机 PBR 绘制。
@@ -1739,7 +1759,9 @@ private:
         depthAttachment.storeOp = rhi::RHIStoreOp::Store;
         depthAttachment.clearValue.depthStencil = {1.0F, 0};
         opaque.depthStencilAttachment = depthAttachment;
-        packet.graph.passes.push_back(opaque);
+        forwardPipeline.SetPass(
+            rhi::pipeline::ForwardStage::Opaque,
+            std::move(opaque));
 
         // Loading the scene attachments makes UI the final visual pass without clearing PBR.
         if (ui_ != nullptr) {
@@ -1760,7 +1782,9 @@ private:
             uiDepthAttachment.loadOp = rhi::RHILoadOp::Load;
             uiDepthAttachment.storeOp = rhi::RHIStoreOp::Store;
             uiPass.depthStencilAttachment = uiDepthAttachment;
-            packet.graph.passes.push_back(std::move(uiPass));
+            forwardPipeline.SetPass(
+                rhi::pipeline::ForwardStage::Overlay,
+                std::move(uiPass));
         }
 
         // Present Pass 把 BackBuffer 从 color attachment 状态转换回呈现状态。
@@ -1773,7 +1797,9 @@ private:
             rhi::RHIRenderGraphResourceType::SwapchainImage,
             rhi::RHIResourceState::Present,
             rhi::RHIPipelineStage::BottomOfPipe});
-        packet.graph.passes.push_back(presentPass);
+        forwardPipeline.SetPass(
+            rhi::pipeline::ForwardStage::Present,
+            std::move(presentPass));
 
         // PassDesc 只描述依赖和 attachment；Workload 才保存真正的 draw command。
         // Shadow Pass 必须使用 Shadow Map 自己的 2048x2048 viewport/scissor，不能沿用窗口
@@ -1801,7 +1827,9 @@ private:
         shadowSphereDraw.indexStream.indexCount = sphereIndexCount_;
         shadowSphereDraw.indexCount = sphereIndexCount_;
         shadowWorkload.indexedDraws.push_back(shadowSphereDraw);
-        packet.workloads.push_back(std::move(shadowWorkload));
+        forwardPipeline.SetWorkload(
+            rhi::pipeline::ForwardStage::Shadow,
+            std::move(shadowWorkload));
 
         // 主 workload 依次绘制球、地面和背景。Skybox 不写深度，因此放在最后不会覆盖物体。
         rhi::RHIRenderPassWorkload opaqueWorkload{};
@@ -1842,7 +1870,9 @@ private:
         skyboxDraw.indexStream.indexCount = sphereIndexCount_;
         skyboxDraw.indexCount = sphereIndexCount_;
         opaqueWorkload.indexedDraws.push_back(skyboxDraw);
-        packet.workloads.push_back(std::move(opaqueWorkload));
+        forwardPipeline.SetWorkload(
+            rhi::pipeline::ForwardStage::Opaque,
+            std::move(opaqueWorkload));
 
         if (ui_ != nullptr) {
             rhi::RHIRenderPassWorkload uiWorkload{};
@@ -1850,15 +1880,21 @@ private:
             uiWorkload.viewport = packet.settings.viewport;
             uiWorkload.scissor = packet.settings.scissor;
             ui_->AppendDraws(uiWorkload);
-            packet.workloads.push_back(std::move(uiWorkload));
+            forwardPipeline.SetWorkload(
+                rhi::pipeline::ForwardStage::Overlay,
+                std::move(uiWorkload));
         }
+
+        // 所有阶段准备完后再写入 FramePacket。这里不做资源状态推导；SubmitFrame
+        // 随后调用的 RenderGraph 编译器仍是依赖、barrier 与 transient alias 的唯一来源。
+        forwardPipeline.Commit(packet);
 
         // 三个 Pass 放在同一次 Graphics Queue submission 中。passNames 的顺序还会接受
         // RenderGraph 依赖验证，防止调用方把消费者 OpaquePBR 提交到生产者 ShadowMap 前面。
         rhi::RHIQueueSubmitDesc submit{};
         submit.debugName = "PBR.RenderGraphSubmit";
         submit.queue = rhi::RHIQueueType::Graphics;
-        submit.passNames = {"ShadowMap", "OpaquePBR", "UI", "Present"};
+        submit.passNames = forwardPipeline.PassNames();
         submit.waits.push_back({
             imageAvailable_[frameSlot_],
             0,
@@ -1889,7 +1925,7 @@ private:
             // nullptr device uses RenderDoc's active API target; HWND narrows the capture to
             // this demo window. Start before acquire so the complete present path is recorded.
             renderDocApi_->StartFrameCapture(nullptr, window_);
-            renderDocApi_->SetCaptureTitle("PBRDemo textured material frame");
+            renderDocApi_->SetCaptureTitle(DEMO_CAPTURE_TITLE);
         }
 #endif
         rhi::u32 imageIndex = 0;
@@ -2034,7 +2070,7 @@ int APIENTRY WinMain(HINSTANCE instance, HINSTANCE, LPSTR commandLine, int) {
         app.Run(instance);
         return EXIT_SUCCESS;
     } catch (const std::exception& exception) {
-        MessageBoxA(nullptr, exception.what(), "RHI PBR Demo", MB_OK | MB_ICONERROR);
+        MessageBoxA(nullptr, exception.what(), DEMO_ERROR_TITLE, MB_OK | MB_ICONERROR);
         return EXIT_FAILURE;
     }
 }

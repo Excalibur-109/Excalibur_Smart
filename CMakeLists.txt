@@ -58,3 +58,12 @@ add_library(RHI STATIC
 target_include_directories(RHI PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(RHI PUBLIC Math Vulkan::Vulkan)
 target_compile_features(RHI PUBLIC cxx_std_20)
+
+# 让从仓库根目录打开的 CMake Tools 也能发现 PBRDemo。此前该 Demo 只能作为
+# `cmake -S RHI/PBRDemo` 的独立工程配置，VS Code 的 configuration provider 因而
+# 无法把生成的 PBRDemoConfig.hpp、stb 与后端依赖传给 main.cpp，造成大量假红线。
+# 子目录保留自己的 PBRDemoRHI target，不改变上面的通用 RHI 静态库或后端实现。
+option(EXCALIBUR_BUILD_PBR_DEMO "Expose PBRDemo to the root CMake project" ON)
+if(WIN32 AND EXCALIBUR_BUILD_PBR_DEMO)
+    add_subdirectory(RHI/PBRDemo)
+endif()

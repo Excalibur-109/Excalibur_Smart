@@ -8,6 +8,10 @@
             "cStandard": "c17",
             "includePath": [
                 "${workspaceFolder}",
+                "${workspaceFolder}/RHI/PBRDemo",
+                "${workspaceFolder}/RHI/PBRDemo/third_party/stb",
+                "${workspaceFolder}/build/PBRDemo/generated",
+                "${workspaceFolder}/build/RHI/PBRDemo/generated",
                 "${env:VULKAN_SDK}/Include"
             ],
             "compilerArgs": [
