@@ -13,6 +13,7 @@
 #include "PBRDemoConfig.hpp"
 #include "RHI.hpp"
 #include "RHI/RenderPipelineDemo/ForwardRenderPipeline.hpp"
+#include "RHI/Renderer/RHIDrawPreparation.hpp"
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_FAILURE_USERMSG
@@ -1826,7 +1827,12 @@ private:
         shadowSphereDraw.indexStream.offset = sphereIndexOffset_;
         shadowSphereDraw.indexStream.indexCount = sphereIndexCount_;
         shadowSphereDraw.indexCount = sphereIndexCount_;
-        shadowWorkload.indexedDraws.push_back(shadowSphereDraw);
+        rhi::renderer::RHIIndexedDrawItem shadowItem{};
+        shadowItem.command = std::move(shadowSphereDraw);
+        shadowItem.sortKey = {0, shadowSphereBindSet_.value, indexBuffer_.value, 0.0F};
+        rhi::renderer::RHIPreparedIndexedDraws preparedShadowDraws =
+            rhi::renderer::PrepareOpaqueIndexedDraws({shadowItem});
+        shadowWorkload.indexedDraws = std::move(preparedShadowDraws.draws);
         forwardPipeline.SetWorkload(
             rhi::pipeline::ForwardStage::Shadow,
             std::move(shadowWorkload));
@@ -1869,7 +1875,28 @@ private:
         skyboxDraw.indexStream.offset = sphereIndexOffset_;
         skyboxDraw.indexStream.indexCount = sphereIndexCount_;
         skyboxDraw.indexCount = sphereIndexCount_;
-        opaqueWorkload.indexedDraws.push_back(skyboxDraw);
+        std::vector<rhi::renderer::RHIIndexedDrawItem> opaqueItems;
+        opaqueItems.reserve(3);
+
+        rhi::renderer::RHIIndexedDrawItem sphereItem{};
+        sphereItem.command = std::move(sphereDraw);
+        sphereItem.sortKey = {0, sphereBindSet_.value, indexBuffer_.value, 0.0F};
+        opaqueItems.push_back(std::move(sphereItem));
+
+        rhi::renderer::RHIIndexedDrawItem planeItem{};
+        planeItem.command = std::move(planeDraw);
+        planeItem.sortKey = {0, planeBindSet_.value, indexBuffer_.value, 0.0F};
+        opaqueItems.push_back(std::move(planeItem));
+
+        rhi::renderer::RHIIndexedDrawItem skyboxItem{};
+        skyboxItem.command = std::move(skyboxDraw);
+        // Skybox belongs to a later render layer so sorting cannot move it ahead of scene geometry.
+        skyboxItem.sortKey = {1, skyboxBindSet_.value, indexBuffer_.value, 0.0F};
+        opaqueItems.push_back(std::move(skyboxItem));
+
+        rhi::renderer::RHIPreparedIndexedDraws preparedOpaqueDraws =
+            rhi::renderer::PrepareOpaqueIndexedDraws(opaqueItems);
+        opaqueWorkload.indexedDraws = std::move(preparedOpaqueDraws.draws);
         forwardPipeline.SetWorkload(
             rhi::pipeline::ForwardStage::Opaque,
             std::move(opaqueWorkload));

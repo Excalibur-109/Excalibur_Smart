@@ -53,11 +53,18 @@ add_library(RHI STATIC
     RHI/Device/RHIDeviceFactory.hpp
     RHI/RenderGraph/RHIRenderGraph.cpp
     RHI/RenderGraph/RHIRenderGraph.hpp
+    RHI/Renderer/RHIDrawPreparation.hpp
     RHI/Vulkan/RHIVulkan.hpp
 )
 target_include_directories(RHI PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(RHI PUBLIC Math Vulkan::Vulkan)
 target_compile_features(RHI PUBLIC cxx_std_20)
+
+add_executable(RHIDrawPreparationTests RHI/Renderer/RHIDrawPreparationTests.cpp)
+target_include_directories(RHIDrawPreparationTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(RHIDrawPreparationTests PRIVATE Math)
+target_compile_features(RHIDrawPreparationTests PRIVATE cxx_std_20)
+add_test(NAME RHIDrawPreparationTests COMMAND RHIDrawPreparationTests)
 
 # 让从仓库根目录打开的 CMake Tools 也能发现 PBRDemo。此前该 Demo 只能作为
 # `cmake -S RHI/PBRDemo` 的独立工程配置，VS Code 的 configuration provider 因而
