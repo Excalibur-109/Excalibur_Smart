@@ -66,13 +66,13 @@ bool RHIVulkan::RecordAndSubmitFrame(
         // 下面两个函数把 RHI 的 usage 转为这个“第一次消费者”所需的 access/stage。
         const auto bufferDstAccess = [](RHIBufferUsage usage) {
             VkAccessFlags access = 0;
-            if (RHIHasAny(usage, RHIBufferUsage::Vertex))   access |= VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
-            if (RHIHasAny(usage, RHIBufferUsage::Index))    access |= VK_ACCESS_INDEX_READ_BIT;
-            if (RHIHasAny(usage, RHIBufferUsage::Uniform))  access |= VK_ACCESS_UNIFORM_READ_BIT;
-            if (RHIHasAny(usage, RHIBufferUsage::Storage))  access |= VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-            if (RHIHasAny(usage, RHIBufferUsage::Indirect)) access |= VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
-            if (RHIHasAny(usage, RHIBufferUsage::TransferSource))      access |= VK_ACCESS_TRANSFER_READ_BIT;
-            if (RHIHasAny(usage, RHIBufferUsage::TransferDestination)) access |= VK_ACCESS_TRANSFER_WRITE_BIT;
+            if (RHIHasAny(usage, RHIBufferUsage::Vertex))               access |= VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+            if (RHIHasAny(usage, RHIBufferUsage::Index))                access |= VK_ACCESS_INDEX_READ_BIT;
+            if (RHIHasAny(usage, RHIBufferUsage::Uniform))              access |= VK_ACCESS_UNIFORM_READ_BIT;
+            if (RHIHasAny(usage, RHIBufferUsage::Storage))              access |= VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            if (RHIHasAny(usage, RHIBufferUsage::Indirect))             access |= VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+            if (RHIHasAny(usage, RHIBufferUsage::TransferSource))       access |= VK_ACCESS_TRANSFER_READ_BIT;
+            if (RHIHasAny(usage, RHIBufferUsage::TransferDestination))  access |= VK_ACCESS_TRANSFER_WRITE_BIT;
             return access == 0 ? VK_ACCESS_MEMORY_READ_BIT : access;
         };
 
@@ -90,10 +90,7 @@ bool RHIVulkan::RecordAndSubmitFrame(
             if (RHIHasAny(usage, RHIBufferUsage::Indirect)) {
                 stages |= VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
             }
-            if (RHIHasAny(
-                    usage,
-                    RHIBufferUsage::TransferSource |
-                        RHIBufferUsage::TransferDestination)) {
+            if (RHIHasAny(usage, RHIBufferUsage::TransferSource | RHIBufferUsage::TransferDestination)) {
                 stages |= VK_PIPELINE_STAGE_TRANSFER_BIT;
             }
             return stages == 0 ? VK_PIPELINE_STAGE_ALL_COMMANDS_BIT : stages;
@@ -235,8 +232,7 @@ bool RHIVulkan::RecordAndSubmitFrame(
         // Texture 使用相同的两级映射。view 跟随物理 texture 创建一次；逻辑资源切换
         // 发生在同一物理槽上时，由后面的 aliasing barrier 处理可见性与 layout。
         std::vector<RHITexture> graphTextures(packet.graph.textures.size());
-        std::vector<RHITexture> physicalGraphTextures(
-            graphPlan.textureAllocationCount);
+        std::vector<RHITexture> physicalGraphTextures(graphPlan.textureAllocationCount);
         for (u32 index = 0; index < packet.graph.textures.size(); ++index) {
             if (graphPlan.textureLifetimes[index].firstPass == RHI_INVALID_INDEX) {
                 continue;

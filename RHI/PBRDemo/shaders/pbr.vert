@@ -1,0 +1,54 @@
+#version 450
+
+// =============================================================================
+// PBR Demo · Vertex Shader
+//
+// 顶点格式：position(vec3) + normal(vec3) + uv(vec2) + tangent(vec4)
+//   layout(location = 0) in vec3 inPosition;
+//   layout(location = 1) in vec3 inNormal;
+//   layout(location = 2) in vec2 inUV;
+//   layout(location = 3) in vec4 inTangent; // xyz=tangent, w=bitangent handedness
+//
+// 单一 UBO（set=0, binding=0）携带 MVP、方向光、光源矩阵、相机和材质参数。
+// =============================================================================
+
+layout(location = 0) in vec3 inPosition;
+layout(location = 1) in vec3 inNormal;
+layout(location = 2) in vec2 inUV;
+layout(location = 3) in vec4 inTangent;
+
+layout(set = 0, binding = 0) uniform PBRUBO {
+    mat4 model;
+    mat4 view;
+    mat4 proj;
+    vec4 lightDir;        // xyz=光线在世界空间中的传播方向
+    vec4 lightColor;      // rgb=光强，a=unused
+    vec4 cameraPos;       // xyz=世界空间相机位置
+    vec4 baseColor;       // rgb=albedo map multiplier，a=metallic map multiplier
+    vec4 materialParams;  // x=roughness multiplier, y=ao, z=height scale, w=unused
+    // 世界空间 -> 光源裁剪空间。Fragment Shader 用它查询当前片元在阴影图中的位置。
+    mat4 lightViewProjection;
+    // xy=1/ShadowMapSize，z=最小 bias，w=法线斜率 bias。
+    vec4 shadowParameters;
+} ubo;
+
+layout(location = 0) out vec3 vWorldPos;
+layout(location = 1) out vec3 vWorldNormal;
+layout(location = 2) out vec2 vUV;
+layout(location = 3) out vec4 vWorldTangent;
+
+void main() {
+    vec4 worldPosition = ubo.model * vec4(inPosition, 1.0);
+    vWorldPos = worldPosition.xyz;
+
+    // 假设 model 矩阵只有旋转/平移/均匀缩放，法线变换用 mat3 即可；
+    // 真实工程里应使用法线矩阵 transpose(inverse(mat3(model)))，这里为了 demo 简洁省略。
+    vWorldNormal = mat3(ubo.model) * inNormal;
+    vWorldTangent = vec4(
+        normalize(mat3(ubo.model) * inTangent.xyz),
+        inTangent.w);
+
+    vUV = inUV;
+
+    gl_Position = ubo.proj * ubo.view * worldPosition;
+}
