@@ -13,7 +13,7 @@ bool RHIVulkan::RecordAndSubmitFrame(
     // 这是 RHI 一帧在 Vulkan 后端的汇合点：CPU 上传数据、根据执行计划创建 transient
     // 资源、写入 barrier 和 draw/dispatch，最后将一个 command buffer 提交到 graphics queue。
     // graphPlan 仅描述已编译的静态依赖/资源分配；packet 保存当前帧的动态数据，例如上传字节、
-    // clear value、draw 参数和导入资源的实际句柄。
+     // clear value、draw 参数和导入资源的实际句柄。
     Impl::FrameContext* frame = nullptr; // 当前轮转槽位；异常路径依靠它回收未提交 staging。
     bool frameSubmitted = false; // vkQueueSubmit 成功后置位，决定资源是否需要延迟回收。
 
@@ -195,8 +195,7 @@ bool RHIVulkan::RecordAndSubmitFrame(
             // 追踪状态，后续 RenderGraph transition 才会使用真实的 source stage/access，
             // 而不是误以为资源仍停留在 TopOfPipe/None。
             for (const RHIBuffer handle : uploadedBuffers) { // 逐个更新已上传资源的状态缓存。
-                Impl::BufferResource* buffer =
-                    getRenderResource(impl_->buffers, handle);
+                Impl::BufferResource* buffer = getRenderResource(impl_->buffers, handle);
                 if (buffer != nullptr) {
                     buffer->currentState = RHIResourceState::Common; // upload 后不强加语义布局，保留为通用 RHI 状态。
                     buffer->currentStages = uploadDestinationStages; // 记录 barrier 的 destination stage，供下一次 transition 作为 source。
@@ -209,8 +208,7 @@ bool RHIVulkan::RecordAndSubmitFrame(
         // -> RHI 句柄”。Imported 逻辑资源直接引用 packet 的外部句柄，内部资源才按
         // allocation slot 创建。多个生命周期不重叠的逻辑资源会得到同一个物理句柄。
         std::vector<RHIBuffer> graphBuffers(packet.graph.buffers.size()); // logical buffer index -> 实际 RHI handle。
-        std::vector<RHIBuffer> physicalGraphBuffers(
-            graphPlan.bufferAllocationCount); // physical allocation slot -> 实际 RHI handle。
+        std::vector<RHIBuffer> physicalGraphBuffers(graphPlan.bufferAllocationCount); // physical allocation slot -> 实际 RHI handle。
         for (u32 index = 0; index < packet.graph.buffers.size(); ++index) {
             // 被 RenderGraph cull 的资源 lifetime 没有 firstPass；既不创建，也不会出现在
             // compiled pass transition 中。
