@@ -256,7 +256,7 @@ Mesh MakePlane(float halfSize = 3.25F) {
         {{halfSize, 0.0F, -halfSize}, {0.0F, 1.0F, 0.0F}, {4.0F, 0.0F}, {1.0F, 0.0F, 0.0F, -1.0F}},
         {{halfSize, 0.0F, halfSize}, {0.0F, 1.0F, 0.0F}, {4.0F, 4.0F}, {1.0F, 0.0F, 0.0F, -1.0F}},
         {{-halfSize, 0.0F, halfSize}, {0.0F, 1.0F, 0.0F}, {0.0F, 4.0F}, {1.0F, 0.0F, 0.0F, -1.0F}}};
-    // 从 +Y 方向观察时保持逆时针绕序，使几何正面与顶点法线 (0, 1, 0)
+    // In the demo's left-handed convention, this clockwise index order faces +Y.
     // 一致；否则启用 back-face culling 后整张地面都会被剔除。
     mesh.indices = {0, 2, 1, 0, 3, 2};
     return mesh;
@@ -304,7 +304,7 @@ Mesh MakeSphere(
             const rhi::u32 lowerLeft = lowerRow + longitudeIndex;
             const rhi::u32 lowerRight = lowerRow + longitudeIndex + 1;
             const rhi::u32 upperRight = upperRow + longitudeIndex + 1;
-            // 按逆时针顺序把四边形拆成两个三角形，使右手坐标系下的正面朝向球外。
+            // Clockwise indices keep the UV sphere front faces pointing outward in LH space.
             mesh.indices.insert(
                 mesh.indices.end(),
                 {upperLeft, lowerLeft, lowerRight, upperLeft, lowerRight, upperRight});
@@ -361,7 +361,8 @@ private:
     bool isFullscreen_ = false;        ///< true 为覆盖主显示器的无边框全屏，false 为 1280x800 窗口。
 
     // Hold the right mouse button to rotate this camera around its fixed position.
-    float3 cameraPosition_{0.0F, 3.0F, 6.0F};
+    // PBRDemo uses a left-handed world: +X is right, +Y is up, and +Z is forward.
+    float3 cameraPosition_{0.0F, 3.0F, -6.0F};
     float cameraYaw_ = 0.0F;
     float cameraPitch_ = -0.351F;
     bool mouseLookActive_ = false;
@@ -596,7 +597,7 @@ private:
         return {
             std::sin(cameraYaw_) * cosPitch,
             std::sin(cameraPitch_),
-            -std::cos(cameraYaw_) * cosPitch};
+            std::cos(cameraYaw_) * cosPitch};
     }
 
     /// 注册窗口类并创建窗口模式或无边框全屏窗口。
@@ -1242,7 +1243,7 @@ private:
         pipelineDesc.vertexBuffers.push_back(vertexLayout);
         pipelineDesc.inputAssembly.topology = rhi::RHIPrimitiveTopology::TriangleList;
         pipelineDesc.raster.cullMode = rhi::RHICullMode::Back;
-        pipelineDesc.raster.frontFace = rhi::RHIFrontFace::CounterClockwise;
+        pipelineDesc.raster.frontFace = rhi::RHIFrontFace::Clockwise;
         pipelineDesc.depthStencil.depthTestEnable = true;
         pipelineDesc.depthStencil.depthWriteEnable = true;
         pipelineDesc.depthStencil.depthCompareOp = rhi::RHICompareOp::Less;
@@ -1284,7 +1285,7 @@ private:
         shadowPipelineDesc.vertexBuffers.push_back(shadowVertexLayout);
         shadowPipelineDesc.inputAssembly.topology = rhi::RHIPrimitiveTopology::TriangleList;
         shadowPipelineDesc.raster.cullMode = rhi::RHICullMode::Back;
-        shadowPipelineDesc.raster.frontFace = rhi::RHIFrontFace::CounterClockwise;
+        shadowPipelineDesc.raster.frontFace = rhi::RHIFrontFace::Clockwise;
         // Shadow acne 的来源：有限深度精度和光栅化采样位置会让接收面与自己写入的深度
         // 略有误差，从而被错误判断为“自己遮挡自己”。Raster Depth Bias 将 caster
         // 写入的深度轻微推远；Fragment Shader 还会在比较前使用法线相关 bias。
@@ -1456,23 +1457,24 @@ private:
         const float3 eye = cameraPosition_;
 
         UniformBufferObject uniform{};
-        uniform.view = ToShaderMatrix(LookAtRH(
+        uniform.view = ToShaderMatrix(LookAtLH(
             eye,
             eye + CameraForward(),
             float3{0.0F, 1.0F, 0.0F}));
-        float4x4 projection = PerspectiveRH_ZO(
+        float4x4 projection = PerspectiveLH_ZO(
             math::Radians(45.0F),
             static_cast<float>(swapchainExtent_.width) /
                 static_cast<float>(swapchainExtent_.height),
             0.1F,
             100.0F);
-        // RH ZO 投影与 D3D 的 viewport Y 方向可直接配合；Vulkan 的正高度 viewport
+        // LH ZO 投影可直接配合 D3D 的 viewport Y 方向；Vulkan 的正高度 viewport
         // 需要翻转 clip-space Y。若 D3D 也翻转，画面会上下颠倒且三角形屏幕绕序反转。
         if (options_.api == rhi::RHIGraphicsAPI::Vulkan) {
             projection[1][1] *= -1.0F;
         }
         uniform.projection = ToShaderMatrix(projection);
-        const float3 normalizedLightDirection = Normalize(float3{-0.5F, -1.0F, -0.3F});
+        // Preserve the light's physical side after the RH-to-LH Z reflection.
+        const float3 normalizedLightDirection = Normalize(float3{-0.5F, -1.0F, 0.3F});
         uniform.lightDirection = {
             normalizedLightDirection.x,
             normalizedLightDirection.y,
@@ -1492,7 +1494,7 @@ private:
             uniform.lightDirection.z};
         const float3 shadowTarget{0.0F, 0.5F, 0.0F};
         const float3 lightPosition = shadowTarget - lightDirection * 8.0F;
-        const float4x4 lightView = LookAtRH(
+        const float4x4 lightView = LookAtLH(
             lightPosition,
             shadowTarget,
             float3{0.0F, 1.0F, 0.0F});
@@ -1501,7 +1503,7 @@ private:
         // left/right/bottom/top 决定 Shadow Map 覆盖的世界区域；范围过大时，每个 texel
         // 覆盖更多世界空间，阴影会变糊；范围过小时，范围外物体不会进入阴影图。
         // near/far 决定光源方向上的可记录深度范围，也应尽量贴合场景以提高精度。
-        float4x4 lightProjection = OrthographicRH_ZO(
+        float4x4 lightProjection = OrthographicLH_ZO(
             -5.0F,
             5.0F,
             -5.0F,
@@ -1531,7 +1533,8 @@ private:
         if (sphere) {
             uniform.model = ToShaderMatrix(
                 TranslationMatrix(float3{0.0F, 1.0F, 0.0F}) *
-                RotationYMatrix(time * math::Radians(sphereRotationDegreesPerSecond_)));
+                // RotationYMatrix is RH positive-angle; negate it for LH positive Y rotation.
+                RotationYMatrix(-time * math::Radians(sphereRotationDegreesPerSecond_)));
             // 金属球直接呈现 metal_18 的原始 base color、metallic、roughness、normal
             // 与 height 信息；alpha/x 分别作为金属度和粗糙度贴图的可调乘数。
             uniform.baseColor = {1.0F, 1.0F, 1.0F, 1.0F};

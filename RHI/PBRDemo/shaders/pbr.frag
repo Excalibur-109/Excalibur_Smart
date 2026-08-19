@@ -131,9 +131,9 @@ vec3 rotateSkyDirectionY(vec3 direction, float angle) {
     float sine = sin(angle);
     float cosine = cos(angle);
     return vec3(
-        cosine * direction.x + sine * direction.z,
+        cosine * direction.x - sine * direction.z,
         direction.y,
-        -sine * direction.x + cosine * direction.z);
+        sine * direction.x + cosine * direction.z);
 }
 
 void main() {

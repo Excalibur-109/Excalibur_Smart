@@ -101,9 +101,9 @@ float3 RotateSkyDirectionY(float3 direction, float angle) {
     const float sine = sin(angle);
     const float cosine = cos(angle);
     return float3(
-        cosine * direction.x + sine * direction.z,
+        cosine * direction.x - sine * direction.z,
         direction.y,
-        -sine * direction.x + cosine * direction.z);
+        sine * direction.x + cosine * direction.z);
 }
 
 SkyboxVertexOutput SkyboxVSMain(ShadowVertexInput input) {
