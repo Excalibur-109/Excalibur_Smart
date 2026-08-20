@@ -501,8 +501,7 @@ bool RHIVulkan::RecordAndSubmitFrame(
                     "vkCreateBuffer(texture staging) failed");
             }
             frame->stagingResources.push_back(staging); // 移交给 FrameContext，直到此帧 GPU 完成才能释放。
-            Impl::StagingResource& trackedStaging =
-                frame->stagingResources.back();
+            Impl::StagingResource& trackedStaging = frame->stagingResources.back();
 
             VkMemoryRequirements requirements{}; // 驱动给出的 buffer 内存分配约束。
             vkGetBufferMemoryRequirements(
@@ -553,8 +552,7 @@ bool RHIVulkan::RecordAndSubmitFrame(
             copy.imageSubresource.mipLevel = upload.mipLevel; // 只写入 upload 指定的 mip。
             copy.imageSubresource.baseArrayLayer = upload.arrayLayer; // 只写入 upload 指定的首层。
             copy.imageSubresource.layerCount = 1; // 单条 RHI upload 每次只覆盖一个 array layer。
-            copy.imageOffset = {
-                upload.offset.x, upload.offset.y, upload.offset.z}; // 目标 mip 内的 texel 起始坐标。
+            copy.imageOffset = { upload.offset.x, upload.offset.y, upload.offset.z}; // 目标 mip 内的 texel 起始坐标。
             copy.imageExtent = { // 要写入的 width/height/depth texel 尺寸。
                 upload.extent.width,
                 upload.extent.height,
@@ -590,8 +588,7 @@ bool RHIVulkan::RecordAndSubmitFrame(
         for (const RHICompiledRenderGraphPass& compiledPass : graphPlan.passes) { // 已拓扑排序的 pass 按最终 GPU 执行顺序录制。
             // sourcePass 保存构建本帧 attachment 的动态数据；compiledPass 保存经过排序、
             // cull、资源分配后稳定不变的索引和 transition 列表。
-            const RHIRenderGraphPassDesc& sourcePass =
-                packet.graph.passes[compiledPass.sourcePassIndex]; // 通过稳定 source index 找回本帧动态 attachment 参数。
+            const RHIRenderGraphPassDesc& sourcePass = packet.graph.passes[compiledPass.sourcePassIndex]; // 通过稳定 source index 找回本帧动态 attachment 参数。
             for (const RHIRenderGraphTransition& transition : compiledPass.transitions) {
                 if (transition.resource.IsBuffer()) {
                     transitionBuffer(
@@ -651,10 +648,8 @@ bool RHIVulkan::RecordAndSubmitFrame(
                 }
 
                 for (const RHIBufferCopyDesc& copy : workload->bufferCopies) { // 录制由 RenderGraph 声明过的 buffer-to-buffer copy。
-                    const Impl::BufferResource* source =
-                        getRenderResource(impl_->buffers, copy.source);
-                    const Impl::BufferResource* destination =
-                        getRenderResource(impl_->buffers, copy.destination);
+                    const Impl::BufferResource* source = getRenderResource(impl_->buffers, copy.source);
+                    const Impl::BufferResource* destination = getRenderResource(impl_->buffers, copy.destination);
                     if (source == nullptr || destination == nullptr ||
                         source->buffer == VK_NULL_HANDLE ||
                         destination->buffer == VK_NULL_HANDLE) {

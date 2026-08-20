@@ -370,6 +370,7 @@ private:
     rhi::ui::InputState uiInput_{};
     std::size_t selectedMaterialTexture_ = 0;
     float sphereRotationDegreesPerSecond_ = 45.0F;
+    float skyRotationDegreesPerSecond_ = 2.5F; ///< 天空盒及非地面物体使用的环境旋转速度。
 
     std::unique_ptr<rhi::RHIDevice> device_;                      ///< 当前选择的 Vulkan/D3D 设备门面。
     // UI follows device_ in member order so it is released before device destruction.
@@ -729,8 +730,7 @@ private:
                 VK_KHR_SURFACE_EXTENSION_NAME,
                 VK_KHR_WIN32_SURFACE_EXTENSION_NAME};
             desc.requiredVulkanDeviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
-            desc.createVulkanSurface = [instance, window = window_](
-                                           std::uintptr_t nativeInstance) {
+            desc.createVulkanSurface = [instance, window = window_](std::uintptr_t nativeInstance) {
                 VkWin32SurfaceCreateInfoKHR surfaceInfo{};
                 surfaceInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
                 surfaceInfo.hinstance = instance;
@@ -813,8 +813,7 @@ private:
             textureDesc.dimension = rhi::RHITextureDimension::Texture2D;
             textureDesc.extent = {material.width, material.height, 1};
             textureDesc.format = spec.format;
-            textureDesc.usage = rhi::RHITextureUsage::Sampled |
-                                rhi::RHITextureUsage::TransferDestination;
+            textureDesc.usage = rhi::RHITextureUsage::Sampled | rhi::RHITextureUsage::TransferDestination;
             material.texture = device_->CreateTexture(textureDesc);
 
             rhi::RHITextureViewDesc viewDesc{};
@@ -862,21 +861,18 @@ private:
         rhi::RHIBufferDesc vertexDesc{};
         vertexDesc.debugName = "PBR.VertexBuffer";
         vertexDesc.size = initialVertexData_.size();
-        vertexDesc.usage = rhi::RHIBufferUsage::Vertex |
-                           rhi::RHIBufferUsage::TransferDestination;
+        vertexDesc.usage = rhi::RHIBufferUsage::Vertex | rhi::RHIBufferUsage::TransferDestination;
         vertexBuffer_ = device_->CreateBuffer(vertexDesc);
 
         rhi::RHIBufferDesc indexDesc{};
         indexDesc.debugName = "PBR.IndexBuffer";
         indexDesc.size = initialIndexData_.size();
-        indexDesc.usage = rhi::RHIBufferUsage::Index |
-                          rhi::RHIBufferUsage::TransferDestination;
+        indexDesc.usage = rhi::RHIBufferUsage::Index | rhi::RHIBufferUsage::TransferDestination;
         indexBuffer_ = device_->CreateBuffer(indexDesc);
 
         rhi::RHIBufferDesc uniformDesc{};
         uniformDesc.size = sizeof(UniformBufferObject);
-        uniformDesc.usage = rhi::RHIBufferUsage::Uniform |
-                            rhi::RHIBufferUsage::TransferDestination;
+        uniformDesc.usage = rhi::RHIBufferUsage::Uniform | rhi::RHIBufferUsage::TransferDestination;
         uniformDesc.debugName = "PBR.SphereUniform";
         sphereUniformBuffer_ = device_->CreateBuffer(uniformDesc);
         uniformDesc.debugName = "PBR.PlaneUniform";
@@ -913,8 +909,7 @@ private:
         skyboxTextureDesc.extent = {skyboxWidth_, skyboxHeight_, 1};
         skyboxTextureDesc.arrayLayers = 6;
         skyboxTextureDesc.format = rhi::RHIFormat::RGBA8_SRGB;
-        skyboxTextureDesc.usage = rhi::RHITextureUsage::Sampled |
-                                  rhi::RHITextureUsage::TransferDestination;
+        skyboxTextureDesc.usage = rhi::RHITextureUsage::Sampled | rhi::RHITextureUsage::TransferDestination;
         skyboxTextureDesc.flags = rhi::RHITextureCreateFlags::CubeCompatible;
         skyboxTexture_ = device_->CreateTexture(skyboxTextureDesc);
 
@@ -962,8 +957,7 @@ private:
         rhi::RHIResourceBinding skyboxUniformBinding{};
         skyboxUniformBinding.binding = 0;
         skyboxUniformBinding.type = rhi::RHIBindingType::UniformBuffer;
-        skyboxUniformBinding.buffer = {
-            sphereUniformBuffer_, 0, sizeof(UniformBufferObject)};
+        skyboxUniformBinding.buffer = { sphereUniformBuffer_, 0, sizeof(UniformBufferObject) };
         skyboxBindSetDesc.bindings.push_back(skyboxUniformBinding);
         rhi::RHIResourceBinding skyboxTextureBinding{};
         skyboxTextureBinding.binding = 2;
@@ -976,8 +970,7 @@ private:
         rhi::RHIPipelineLayoutDesc skyboxPipelineLayoutDesc{};
         skyboxPipelineLayoutDesc.debugName = "PBR.SkyboxPipelineLayout";
         skyboxPipelineLayoutDesc.bindSetLayouts.push_back(skyboxBindSetLayout_);
-        skyboxPipelineLayout_ = device_->CreatePipelineLayout(
-            skyboxPipelineLayoutDesc);
+        skyboxPipelineLayout_ = device_->CreatePipelineLayout(skyboxPipelineLayoutDesc);
 
         // Shadow Map 本质是一张“可采样的深度附件”：
         // - DepthStencilAttachment：允许 Shadow Pass 做深度测试并写入最近深度；
@@ -988,8 +981,7 @@ private:
         shadowTextureDesc.debugName = "PBR.ShadowDepth";
         shadowTextureDesc.extent = {SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 1};
         shadowTextureDesc.format = rhi::RHIFormat::D32_Float;
-        shadowTextureDesc.usage = rhi::RHITextureUsage::DepthStencilAttachment |
-                                  rhi::RHITextureUsage::Sampled;
+        shadowTextureDesc.usage = rhi::RHITextureUsage::DepthStencilAttachment | rhi::RHITextureUsage::Sampled;
         shadowTexture_ = device_->CreateTexture(shadowTextureDesc);
 
         // View 只暴露 depth aspect。这里没有 stencil，也不需要 color view。
@@ -1084,8 +1076,7 @@ private:
         rhi::RHIPipelineLayoutDesc shadowPipelineLayoutDesc{};
         shadowPipelineLayoutDesc.debugName = "PBR.ShadowPipelineLayout";
         shadowPipelineLayoutDesc.bindSetLayouts.push_back(shadowBindSetLayout_);
-        shadowPipelineLayout_ = device_->CreatePipelineLayout(
-            shadowPipelineLayoutDesc);
+        shadowPipelineLayout_ = device_->CreatePipelineLayout(shadowPipelineLayoutDesc);
     }
 
     /// 为一个物体绑定独立 UBO，并复用全场景阴影、环境和 metal_18 贴图。
@@ -1129,9 +1120,7 @@ private:
     }
 
     /// 为 Shadow Pass 创建只包含物体 UBO 的绑定，避免边写边采样 shadowTexture_。
-    rhi::RHIBindSet CreateShadowBindSet(
-        const char* name,
-        rhi::RHIBuffer buffer) {
+    rhi::RHIBindSet CreateShadowBindSet(const char* name, rhi::RHIBuffer buffer) {
         // Shadow Pass 当前只有球体充当 caster，所以只创建球体 BindSet。
         // Plane 是 receiver，不写入 Shadow Map；否则它只会写下自身平面深度，
         // 对“球是否挡住光线”的判断没有额外帮助，并增加一次无意义绘制。
@@ -1436,8 +1425,16 @@ private:
             180.0F,
             1.0F,
             14);
+        (void)ui_->SliderFloat(
+            "SKY ROTATION",
+            {38.0F, 350.0F, 310.0F, 34.0F},
+            skyRotationDegreesPerSecond_,
+            0.0F,
+            60.0F,
+            0.5F,
+            14);
         ui_->TextBox(
-            {38.0F, 365.0F, 310.0F, 30.0F},
+            {38.0F, 407.0F, 310.0F, 30.0F},
             "METAL 18 MATERIAL",
             {0.045F, 0.09F, 0.12F, 0.96F},
             {0.52F, 0.80F, 0.90F, 1.0F},
@@ -1538,12 +1535,17 @@ private:
             // 金属球直接呈现 metal_18 的原始 base color、metallic、roughness、normal
             // 与 height 信息；alpha/x 分别作为金属度和粗糙度贴图的可调乘数。
             uniform.baseColor = {1.0F, 1.0F, 1.0F, 1.0F};
-            uniform.materialParameters = {1.0F, 1.0F, 0.045F, time * math::Radians(2.5F)};
+            uniform.materialParameters = {
+                1.0F,
+                1.0F,
+                0.045F,
+                time * math::Radians(skyRotationDegreesPerSecond_)};
         } else {
             uniform.model = ToShaderMatrix(float4x4{1.0F});
             // 地面复用同一组贴图但做暗色、低金属度调制，并通过 4x UV 平铺展示细节。
             uniform.baseColor = {0.38F, 0.42F, 0.46F, 0.12F};
-            uniform.materialParameters = {0.90F, 1.0F, 0.018F, time * math::Radians(2.5F)};
+            // 地面模型和环境采样保持固定，天空旋转时地面不会产生旋转错觉。
+            uniform.materialParameters = {0.90F, 1.0F, 0.018F, 0.0F};
         }
         return uniform;
     }

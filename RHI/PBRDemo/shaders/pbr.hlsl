@@ -97,6 +97,22 @@ struct SkyboxVertexOutput {
     float3 direction    : TEXCOORD0;
 };
 
+float3 RotateSkyboxDirectionYExceptBottom(float3 direction, float angle) {
+    // Keep directions belonging to cubemap's -Y face fixed; rotate all other faces.
+    if (direction.y < 0.0F &&
+        -direction.y >= abs(direction.x) &&
+        -direction.y >= abs(direction.z)) {
+        return direction;
+    }
+
+    const float sine = sin(angle);
+    const float cosine = cos(angle);
+    return float3(
+        cosine * direction.x - sine * direction.z,
+        direction.y,
+        sine * direction.x + cosine * direction.z);
+}
+
 float3 RotateSkyDirectionY(float3 direction, float angle) {
     const float sine = sin(angle);
     const float cosine = cos(angle);
@@ -111,14 +127,16 @@ SkyboxVertexOutput SkyboxVSMain(ShadowVertexInput input) {
     const float3 viewPosition = mul(view, float4(input.position, 0.0F)).xyz;
     const float4 clipPosition = mul(projection, float4(viewPosition, 1.0F));
     output.clipPosition = clipPosition.xyww;
-    output.direction = RotateSkyDirectionY(input.position, materialParameters.w);
+    // Keep the raw direction so the pixel shader can classify the cubemap face per pixel.
+    output.direction = input.position;
     return output;
 }
 
 float4 SkyboxPSMain(SkyboxVertexOutput input) : SV_TARGET0 {
     float3 color = skyboxTexture.Sample(
         skyboxSampler,
-        RotateSkyDirectionY(normalize(input.direction), materialParameters.w)).rgb;
+        RotateSkyboxDirectionYExceptBottom(
+            normalize(input.direction), materialParameters.w)).rgb;
     const float luminance = dot(color, float3(0.2126F, 0.7152F, 0.0722F));
     color = max(lerp(luminance.xxx, color, 1.18F) * 1.18F, 0.0F.xxx);
     return float4(color, 1.0F);

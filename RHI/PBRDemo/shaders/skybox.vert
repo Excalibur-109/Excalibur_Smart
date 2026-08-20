@@ -17,18 +17,11 @@ layout(set = 0, binding = 0) uniform PBRUBO {
 
 layout(location = 0) out vec3 vDirection;
 
-vec3 rotateSkyDirectionY(vec3 direction, float angle) {
-    float sine = sin(angle);
-    float cosine = cos(angle);
-    return vec3(
-        cosine * direction.x - sine * direction.z,
-        direction.y,
-        sine * direction.x + cosine * direction.z);
-}
-
 void main() {
     mat4 viewRotation = mat4(mat3(ubo.view));
     vec4 clipPosition = ubo.proj * viewRotation * vec4(inPosition, 1.0);
     gl_Position = clipPosition.xyww;
-    vDirection = rotateSkyDirectionY(inPosition, ubo.materialParams.w);
+    // Keep the raw direction here. The fragment shader classifies the cubemap face per pixel,
+    // which lets the -Y bottom face stay fixed while the other faces rotate.
+    vDirection = inPosition;
 }
